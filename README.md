@@ -79,3 +79,18 @@ $ transcode "TGS × Maltine REMIX (FLAC)" /tmp/"TGS x Maltine REMIX (%s)" V0 V2
 /tmp/TGS x Maltine REMIX (V2)/./04 Rock You! (tofubeats 1988 dub version).mp3
 /tmp/TGS x Maltine REMIX (V2)/./07 キラリ☆ (Avec Avec Remix).mp3
 ```
+
+# urldecode
+`urldecode`  
+outputs its input urldecoded.
+```
+$ echo %5bErno%cc%83_Lendvai%5d_Bela_Bartok_An_Analysis_of_His_Mu.pdf | urldecode
+[Ernõ_Lendvai]_Bela_Bartok_An_Analysis_of_His_Mu.pdf
+```
+
+# zippyshare
+`zippyshare [-s] url`  
+outputs the file hosted at the zippyshare index page `url`. If `-s` is specified, output is saved to a file named from the download url instead. Requires curl and [urldecode](#urldecode).
+```
+$ zippyshare http://www120.zippyshare.com/v/fi89FJi1/file.html > by-request-only.zip
+```
