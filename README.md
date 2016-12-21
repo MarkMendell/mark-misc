@@ -43,7 +43,7 @@ $ printf '5\n10\n-2\n' | med
 
 # mixtape.moe
 `mixtape.moe file`  
-uploads `file` to mixtape.moe and outputs the url. Requires bash (for now), grep with -o (for now), and curl.
+uploads `file` to mixtape.moe and outputs the url. Requires [bash](https://www.gnu.org/software/bash/) (for now), grep with -o (for now), and [curl](https://curl.haxx.se/).
 ```
 $ mixtape.moe evidence.zip
 https://my.mixtape.moe/tymyko.zip
@@ -51,7 +51,7 @@ https://my.mixtape.moe/tymyko.zip
 
 # transcode
 `transcode indir outdirtemplate quality [quality ...]`  
-copies files recursively from `indir` to `$(printf "$outdirtemplate" $quality)` for each `quality` (320, V0, or V2), replacing flac files with `quality` mp3 transcodes and ignoring m3u files. Requires metaflac, flac, and lame.
+copies files recursively from `indir` to `$(printf "$outdirtemplate" $quality)` for each `quality` (320, V0, or V2), replacing flac files with `quality` mp3 transcodes and ignoring m3u files. Requires [flac + metaflac](https://xiph.org/flac/index.html) and [lame](http://lame.sourceforge.net/).
 ```
 $ transcode "TGS × Maltine REMIX (FLAC)" /tmp/"TGS x Maltine REMIX (%s)" V0 V2
 /tmp/TGS x Maltine REMIX (V0)
@@ -90,7 +90,7 @@ $ echo %5bErno%cc%83_Lendvai%5d_Bela_Bartok_An_Analysis_of_His_Mu.pdf | urldecod
 
 # zippyshare
 `zippyshare [-s] url`  
-outputs the file hosted at the zippyshare index page `url`. If `-s` is specified, output is saved to a file named from the download url instead. Requires curl and [urldecode](#urldecode).
+outputs the file hosted at the zippyshare index page `url`. If `-s` is specified, output is saved to a file named from the download url instead. Requires [curl](https://curl.haxx.se/) and [urldecode](#urldecode).
 ```
 $ zippyshare http://www120.zippyshare.com/v/fi89FJi1/file.html > by-request-only.zip
 ```
