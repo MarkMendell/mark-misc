@@ -1,4 +1,4 @@
-# avg
+# [avg](../../raw/master/avg.sh)
 `avg [precision]`  
 reads newline-separated integers and outputs their average to `precision` digits past the decimal (default of 2).
 ```
@@ -6,7 +6,7 @@ $ printf '5\n10\n-2\n' | avg 1
 4.3
 ```
 
-# btls
+# [btls](../../raw/master/btls.c)
 `btls`  
 reads torrent formatted input and lists the files included.
 ```
@@ -16,14 +16,14 @@ wheels/back.whl
 engine.eng
 ```
 
-# cpx
+# [cpx](../../raw/master/cpx.sh)
 `cpx from to`  
 copies `from` to `to` and makes `to` executable. 
 ```
 $ cpx avg.sh /bin/avg
 ```
 
-# lread
+# [lread](../../raw/master/lread.sh)
 `lread`  
 waits for a line from the terminal between printing lines from stdin.
 ```
@@ -33,7 +33,7 @@ $ printf '5\n10\n-2\n' | lread
 -2  # <ENTER>
 ```
 
-# med
+# [med](../../raw/master/med.sh)
 `med`  
 reads newline-separated integers and outputs their median, choosing the lower value if there is an even count.
 ```
@@ -41,7 +41,7 @@ $ printf '5\n10\n-2\n' | med
 5
 ```
 
-# mixtape.moe
+# [mixtape.moe](../../raw/master/mixtape.moe.bash)
 `mixtape.moe file`  
 uploads `file` to mixtape.moe and outputs the url. Requires [bash](https://www.gnu.org/software/bash/) (for now), grep with -o (for now), and [curl](https://curl.haxx.se/).
 ```
@@ -49,7 +49,7 @@ $ mixtape.moe evidence.zip
 https://my.mixtape.moe/tymyko.zip
 ```
 
-# transcode
+# [transcode](../../raw/master/transcode.sh)
 `transcode indir outdirtemplate quality [quality ...]`  
 copies files recursively from `indir` to `$(printf "$outdirtemplate" $quality)` for each `quality` (320, V0, or V2), replacing flac files with `quality` mp3 transcodes and ignoring m3u files. Requires [flac + metaflac](https://xiph.org/flac/index.html) and [lame](http://lame.sourceforge.net/).
 ```
@@ -80,7 +80,7 @@ $ transcode "TGS × Maltine REMIX (FLAC)" /tmp/"TGS x Maltine REMIX (%s)" V0 V2
 /tmp/TGS x Maltine REMIX (V2)/./07 キラリ☆ (Avec Avec Remix).mp3
 ```
 
-# urldecode
+# [urldecode](../../raw/master/urldecode.c)
 `urldecode`  
 outputs its input urldecoded.
 ```
@@ -88,7 +88,7 @@ $ echo %5bErno%cc%83_Lendvai%5d_Bela_Bartok_An_Analysis_of_His_Mu.pdf | urldecod
 [Ernõ_Lendvai]_Bela_Bartok_An_Analysis_of_His_Mu.pdf
 ```
 
-# zippyshare
+# [zippyshare](../../raw/master/zippyshare.sh)
 `zippyshare [-s] url`  
 outputs the file hosted at the zippyshare index page `url`. If `-s` is specified, output is saved to a file named from the download url instead. Requires [curl](https://curl.haxx.se/) and [urldecode](#urldecode).
 ```
