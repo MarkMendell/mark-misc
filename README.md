@@ -49,6 +49,22 @@ $ mixtape.moe evidence.zip
 https://my.mixtape.moe/tymyko.zip
 ```
 
+# [tls](../../raw/master/tls.sh)
+`tls host [port]`  
+sends input to `host:port` (default 443) over TLS and outputs responses. Requires [openssl](https://www.openssl.org/).
+```
+$ printf "GET /user/mmendell/ HTTP/1.1\r\nhost: www.andrew.cmu.edu\r\n\r\n" | tls www.andrew.cmu.edu
+HTTP/1.1 200 OK
+Content-Length: 84
+Content-Type: text/html
+
+<head><meta charset="utf-8" /></head>
+<body>
+<a href="ha">Fusion HA</a>
+♫
+</body>
+```
+
 # [transcode](../../raw/master/transcode.sh)
 `transcode indir outdirtemplate quality [quality ...]`  
 copies files recursively from `indir` to `$(printf "$outdirtemplate" $quality)` for each `quality` (320, V0, or V2), replacing flac files with `quality` mp3 transcodes and ignoring m3u files. Requires [flac + metaflac](https://xiph.org/flac/index.html) and [lame](http://lame.sourceforge.net/).
