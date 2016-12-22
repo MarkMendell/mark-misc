@@ -4,11 +4,14 @@
 #include <stdlib.h>
 
 
-/* Write errno's corresponding error message preceded by "<msg>: ", then exit with nonzero status.
- */
+/* Write errno's corresponding error message preceded by "urldecode: <msg>: ", then exit with
+ * nonzero status. */
 void
 pexit(char *msg)
 {
+	int olderrno = errno;
+	fputs("urldecode: ", stderr);
+	errno = olderrno;
 	perror(msg);
 	exit(EXIT_FAILURE);
 }
@@ -19,7 +22,7 @@ int
 ferrordie(void)
 {
 	if (ferror(stdin))
-		pexit("urldecode: getchar");
+		pexit("getchar");
 	return 0;
 }
 
@@ -57,7 +60,7 @@ main(void)
 			c = hexordie(x1)<<4 | hexordie(x2);
 		}
 		if (putchar(c) == EOF)
-			pexit("urldecode: putchar");
+			pexit("putchar");
 	}
 	ferrordie();
 }
