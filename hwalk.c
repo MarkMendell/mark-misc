@@ -14,7 +14,6 @@ char VOID[VOIDLEN][9] = {
 	"base",
 	"br",
 	"col",
-	"doctype",
 	"embed",
 	"hr",
 	"img",
@@ -46,6 +45,7 @@ pexit(char *msg, FILE *f)
 void
 fseekordie(FILE *f, long i)
 {
+	printf("\nSEEKING: %d\n", i);
 	if (fseek(f, i, 0))
 		pexit("fseek", f);
 }
@@ -103,7 +103,7 @@ main(void)
 	fseekordie(f, 0);
 
 	// Walk tags
-	long namestart, nextelem;
+	long namestart, nextnamestart;
 	int closing, prevc, depth;
 OUTSIDETAG:
 	// Read until tag
@@ -122,7 +122,7 @@ OUTSIDETAG:
 	if ((putchar('<') == EOF) || (putchar(c) == EOF))
 		pexit("putchar", f);
 	// Output every tag within the tag we found
-	nextelem = -1;
+	nextnamestart = -1;
 	closing = 0;
 	depth = 0;
 	while ((c = getputcordie(f)) != EOF) {
@@ -138,8 +138,8 @@ OUTSIDETAG:
 			else {
 				closing = 0;
 				namestart = ftellordie(f) - 1;
-				if (nextelem == -1)
-					nextelem = namestart - 1;
+				if (nextnamestart == -1)
+					nextnamestart = namestart;
 			}
 		// End of tag
 		else if (c == '>') {
@@ -159,20 +159,24 @@ OUTSIDETAG:
 				int selfclosing = (prevc == '/');
 				for (int i=0; i<VOIDLEN; i++)
 					selfclosing = selfclosing || !strcasecmp(tag, VOID[i]);
+				printf("selfclosing: %d\n", selfclosing);
 				depth += !selfclosing;
 			}
 			// Finished current tag
 			if (depth == 0) {
+				puts("***DONE***");
 				// Finished entire outer tag
-				if (nextelem == -1)
+				if (nextnamestart == -1)
 					{ puts("finished outer tag"); break;
 					goto OUTSIDETAG;
 					}
 				// Still recursing inside outer tag
-				else
-					{ puts("still recursing"); break;
-					fseekordie(f, nextelem);
-					}
+				else {
+					fseekordie(f, nextnamestart);
+					closing = 0;
+					if (putchar('<') == EOF)
+						pexit("putchar", f);
+				}
 			}
 			namestart = -1;
 		}
