@@ -6,7 +6,7 @@
 
 
 /* Length of the below list */
-#define VOIDLEN 16
+#define VOIDLEN 15
 
 /* Void tags (automatically self-closing) */
 char VOID[VOIDLEN][9] = {
@@ -159,8 +159,16 @@ OUTSIDETAG:
 				int selfclosing = (prevc == '/');
 				for (int i=0; i<VOIDLEN; i++)
 					selfclosing = selfclosing || !strcasecmp(tag, VOID[i]);
-				printf("selfclosing: %d\n", selfclosing);
 				depth += !selfclosing;
+				// Check if tag contains raw text
+				int raw = 0;
+				for (int i=0; i<RAWLEN; i++)
+					raw = raw || !strcasecmp(tag, RAW[i]);
+				if (raw) {
+					while (requireputc(f) != '<');
+					if ((c = requireputc(f)) == '/')
+						for (int i=0; i<taglen; i++
+
 			}
 			// Finished current tag
 			if (depth == 0) {
