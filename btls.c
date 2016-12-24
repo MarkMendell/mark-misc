@@ -72,7 +72,6 @@ int
 main(void)
 {
 	int c;
-	char *diemsg;
 	while ((c = peek()) != EOF)
 		switch(c) {
 			case 'i':
