@@ -49,9 +49,21 @@ $ mixtape.moe evidence.zip
 https://my.mixtape.moe/tymyko.zip
 ```
 
+# [ready](../../raw/master/ready.c)
+`ready`  
+exits when input is ready to be read.
+```
+$ { sleep 5; echo hello; } | { echo hi; cat; }
+hi  # instant
+hello  # after 5 seconds
+$ { sleep 5; echo hello; } | { ready; echo hi; cat; }
+hi  # after 5 seconds
+hello  # instant
+```
+
 # [tls](../../raw/master/tls.sh)
-`tls host [port]`  
-sends input to `host:port` (default 443) over TLS and outputs responses. Requires [openssl](https://www.openssl.org/).
+`tls [-r] host [port]`  
+sends input to `host:port` (default 443) over TLS and outputs responses, reconnecting automatically if `-r` is specified. Requires [openssl](https://www.openssl.org/) and [ready](#ready).
 ```
 $ printf "GET /user/mmendell/ HTTP/1.1\r\nhost: www.andrew.cmu.edu\r\n\r\n" | tls www.andrew.cmu.edu
 HTTP/1.1 200 OK
