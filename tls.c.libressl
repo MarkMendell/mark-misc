@@ -1,0 +1,47 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include <tls.h>
+
+
+void
+die(char *msg, struct tls *client, int tlserror)
+{
+	if (tlserror)
+		fprintf(stderr, "%s: %s\n", msg, tls_error(client));
+	else
+		fprintf(stderr, "%s\n", msg);
+	if (client) {
+		tls_close(client);
+		tls_free(client);
+	}
+	exit(EXIT_FAILURE);
+}
+
+int
+main(int argc, char **argv)
+{
+	// Get host, port, and whether to reconnect
+	int reconnect = 0;
+	int hosti = 1;
+	if (argc < 2)
+		die("usage: tls [-r] host [port]", NULL, 0);
+	else if ((argc > 2) && (!strcmp(argv[1], "-r"))) {
+		reconnect = 1;
+		hosti++;
+	}
+	char *host = argv[hosti];
+	char *port;
+	if (argc > hosti+1)
+		port = argv[hosti+1];
+	else
+		port = "443";
+
+	if (tls_init())
+		die("tls: tls_init", NULL, 0);
+	struct tls *client = tls_client();
+	if (client == NULL)
+		die("tls: tls_client", NULL, 0);
+	if (tls_connect(client, host, port))
+		die("tls: tls_connect", client, 1);
