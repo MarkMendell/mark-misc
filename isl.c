@@ -34,8 +34,7 @@ main()
 {
 	// Open connection to soundcloud
 	struct addrinfo *scinfo;
-	struct addrinfo hints = {0};
-	hints.ai_protocol = IPPROTO_TCP;
+	struct addrinfo hints = { .ai_protocol = IPPROTO_TCP };
 	int gaires = getaddrinfo("api-v2.soundcloud.com", "443", &hints, &scinfo);
 	if (gaires) {
 		fprintf(stderr, "scstream: getaddrinfo looking up soundcloud: %s\n", gai_strerror(gaires));
