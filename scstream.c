@@ -59,20 +59,33 @@ main(int argc, char **argv)
 
 	// Read OAuth token from stdin
 	char oauthtoken[50];
-	size_t len = fread(oauthtoken, 1, sizeof(oauthtoken), stdin);
+	size_t len = fread(oauthtoken, 1, sizeof(oauthtoken)-1, stdin);
 	if (ferror(stdin))
 		pexit("fread stdin", fromsc, tosc, NULL);
-	else if (len == sizeof(oauthtoken))
+	else if (len == sizeof(oauthtoken)-1)
 		die("oauth token longer than expected", fromsc, tosc, NULL);
+	oauthtoken[len] = '\0';
 
 	// Get save file (for where we left off)
-	char *offsetid = NULL;
-	if (argc > 1) {
-		FILE *savefile = fopen(argv[1]);
-		int c;
-		if (
-		if (savefile == NULL)
-			pexit("fopen savefile", fromsc, tosc, NULL);
+	char offset[20];
+	FILE *savefile;
+	if ((argc > 1) && ((savefile = fopen(argv[1])) != NULL)) {
+		size_t offsetlen = fread(offset, 1, sizeof(offset)-1, savefile);
+		if (ferror(savefile)) {
+			int olderrno = errno;
+			fclose(savefile);
+			errno = olderrno;
+			pexit("fread savefile", fromsc, tosc, NULL);
+		} else if (fclose(savefile) == EOF)
+			pexit("fclose savefile (after read)", fromsc, tosc, NULL);
+		else if (offsetlen == sizeof(offset)-1)
+			die("offset id longer than expected", fromsc, tosc, NULL);
+		offset[offsetlen] = '\0';
+	} else if ((argc > 1) && (errno != ENOENT))
+		pexit("fopen savefile", fromsc, tosc, NULL);
+	else
+		offset[0] = '\0';
+	char *offsetq = offset[0] ? "?offset=" : "";
 
 	// Send HTTP request and read response
 	char requesttemplate[] = 
@@ -80,7 +93,7 @@ main(int argc, char **argv)
 		"host: api-v2.soundcloud.com\r\n"
 		"Authorization: OAuth %s\r\n"
 		"\r\n";
-	if (fprintf(tosc, requesttemplate, offsetkey, offsetvalue, oauthtoken) < 0)
+	if (fprintf(tosc, requesttemplate, offsetq, offset, oauthtoken) < 0)
 		pexit("fprintf request", fromsc, tosc, NULL);
 	char *header = NULL;
 	size_t n;
