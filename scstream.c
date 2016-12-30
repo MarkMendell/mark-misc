@@ -65,7 +65,14 @@ main(int argc, char **argv)
 	else if (len == sizeof(oauthtoken))
 		die("oauth token longer than expected", fromsc, tosc, NULL);
 
-
+	// Get save file (for where we left off)
+	char *offsetid = NULL;
+	if (argc > 1) {
+		FILE *savefile = fopen(argv[1]);
+		int c;
+		if (
+		if (savefile == NULL)
+			pexit("fopen savefile", fromsc, tosc, NULL);
 
 	// Send HTTP request and read response
 	char requesttemplate[] = 
