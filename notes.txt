@@ -5,16 +5,14 @@ fix broken getchar stuff! check those calls, man!
 current check for matching strings is wrong (e.g. ---> will not match -->)
 
 ### scstream
-usage:
-  > $ scstream ~/.scstreamlast < ~/.sccookie | lread
-  > repost FLOOR BABA
-  > https://soundcloud.com/deskpopmusic/sets/deskpop-x-fright-house-cursed
-  > repost PEDICURE RECORDS
-  > https://soundcloud.com/heart2hurtnxc/tysm-ily-thank-u-full-version
-  > post   Kenji Yamamoto
-  > https://soundcloud.com/exilevevo/ega-the-rainbow-streets-in-the-starry-sky
-  > $ cat ~/.scstreamlast
-  > 2016-10-27T15:10:59Z  # or some timestamp; possibly just thing for offset=?
+> $ mkfifo /tmp/fromsc /tmp/tosc
+> $ tls -r api-v2.soundcloud.com >/tmp/fromsc </tmp/tosc &
+> $ scstream ~/.scstreamlast <~/.sccookie 3</tmp/fromsc 4>/tmp/tosc | lread
+> r 78784273 t 300124598
+> r 4351913 t 299410580
+> p t 300107987
+> $ cat ~/.scstreamlast
+> 2016-10-27T15:10:59Z  # or some timestamp; possibly just thing for offset=?
 see "EPIPE" in fputc (called by fwrite)
 curl -H "Authorization: OAuth sd89f88asdufhsfhasudhf98sh" "https://api-v2.soundcloud.com/stream"
   offset=some_uuid
@@ -96,3 +94,6 @@ fork; wait for signal from parent; exec
 > ♫
 > </body>
 maybe impossible with same pipe because of reading same thread as writing
+
+### urldecode
+pexit should start with "urldecode: "
