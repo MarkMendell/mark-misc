@@ -7,6 +7,7 @@
 unsigned int UUIDLEN = 36;
 
 
+/* Close fromsc and tosc and free l, exiting with nonzero status if there's an error. */
 void
 cleanupordie(FILE *fromsc, FILE *tosc, char *l)
 {
@@ -46,6 +47,23 @@ die(char *msg, FILE *fromsc, FILE *tosc, char *l)
 	exit(EXIT_FAILURE);
 }
 
+/* Save uuid to savepath, exiting with nonzero status if an error occurs. */
+void
+saveordie(char *uuid, char *savepath, FILE *fromsc, FILE *tosc)
+{
+	FILE *savefile = fopen(savepath, "w");
+	if (savefile == NULL)
+		pexit("fopen savefile (to write)", fromsc, tosc, NULL);
+	fwrite(uuid, 1, UUIDLEN, savefile);
+	if (ferror(savefile)) {
+		int olderrno = errno;
+		fclose(savefile);
+		errno = olderrno;
+		pexit("fwrite savefile", fromsc, tosc, NULL);
+	} else if (fclose(savefile) == EOF)
+		pexit("fclose savefile (after write)", fromsc, tosc, NULL);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -70,7 +88,7 @@ main(int argc, char **argv)
 		die("oauth token longer than expected", fromsc, tosc, NULL);
 	oauthtoken[len] = '\0';
 
-	// Get save file (for where we left off)
+	// Read save file (for where we left off)
 	char prevuuid[UUIDLEN+1];
 	FILE *savefile;
 	if ((argc > 1) && ((savefile = fopen(argv[1])) != NULL)) {
@@ -86,7 +104,7 @@ main(int argc, char **argv)
 			die("saved uuid shorter than expected", fromsc, tosc, NULL);
 		prevuuid[prevuuidlen] = '\0';
 	} else if ((argc > 1) && (errno != ENOENT))
-		pexit("fopen savefile", fromsc, tosc, NULL);
+		pexit("fopen savefile (to read)", fromsc, tosc, NULL);
 	else
 		prevuuid[0] = '\0';
 
@@ -117,7 +135,7 @@ main(int argc, char **argv)
 		long contentlen = -1;
 		size_t cllen = strlen("content-length:");
 		while (((len = getline(&header, &n, fromsc)) != -1) && (header[0] != '\r'))
-			if ((len >= cllen+1) && (!strncasecmp(header, "content-length:", cllen)))4
+			if ((len >= cllen+1) && (!strncasecmp(header, "content-length:", cllen)))
 				contentlen = strtol(&header[cllen], NULL, 10);
 		if (len == -1)
 			pexit("getline header", fromsc, tosc, header);
@@ -135,28 +153,82 @@ main(int argc, char **argv)
 	
 		// Scan for last seen UUID
 		long i;
+		char *uuid;
 		for (i=0; i<contentlen-UUIDLEN-8; i++) {  // 8 = length of "uuid":"
 			// Start of a json string
 			if (response[i] == '"') {
 				// Start of a uuid entry
 				if (!strncmp(&response[i], "\"uuid\":\"", 8)) {
+					uuid = &response[i+8];
 					// First uuid ever seen
 					if (prevuuid[0] == '\0') {
-						strncpy(prevuuid, &response[i+8], UUIDLEN);
+						strncpy(prevuuid, uuid, UUIDLEN);
 						if (argc > 1)
 							saveordie(prevuuid, argv[1], fromsc, tosc);
-					} else {
+					} else
 						// Compare to the last uuid output
-						for (int j=0; j<UUIDLEN; j++)
-							if (response[i+8+j] < prevuuid[j])
-								break outer;
-							else if (response[i+8+j] > prevuuid[j])
+						for (int j=0; j<UUIDLEN; j++) {
+							int cmp = uuid[j] - prevuuid[j];
+							if ((cmp < 0) || ((j == UUIDLEN-1) && (cmp == 0)))
+								goto AFTERSCAN;
+							else if (cmp > 0)
 								break;
-					}
+						}
 				}
 				while ((++i < contentlen) && ((reponse[i] != '"') || (response[i-1] == '\\')));
 			}
 		}
+AFTERSCAN:  // i is either at the start of "uuid":"<uuid>", where <uuid> is right after the next
+						// entry we want to output, or such a uuid was never found
+		// All earlier entries
+		if (i >= contentlen-UUIDLEN-8)
+			strncpy(offset, uuid, UUIDLEN);
+		// Found where we left off
+		else {
+			offset[0] = '\0';
+			uuid = NULL;
+			unsigned long userid = 0;
+			for (i--; i>0; i--) {
+				// End of a json string
+				if (response[i] == '"') {
+					while ((--i-1 > 0) && ((response[i] != '"') || (response[i-1] == '\\')));
+					if (i-1 <= 0)
+						die("unmatched end quote in json response", fromsc, tosc, NULL);
+					// Start of uuid
+					if (!strncmp(&response[i], "\"uuid\":\"", 8)) {
+						uuid = &response[i+8];
+						uuid[i+8+UUIDLEN] = '\0';
+					// Start of user id (we assume it's the first 'id' key before 'uuid')
+					} else if (uuid && !strncmp(&response[i], "\"id\":", 5)) {
+						userid = strtol(&response[i+5], NULL, 10);
+						if (!userid)
+							die("failed to parse user id", fromsc, tosc, NULL);
+					// Start of type of entry (we assume it happens before 'id')
+					} else if (uuid && userid && !strncmp(&response[i], "\"type\":\"", 8)) {
+						char type = response[i+8];
+						int repost;
+						if (type == 'p')
+							repost = !strncmp(&response[i+8], "playlist-repost", 15);
+						else if (type == 't')
+							repost = !strncmp(&response[i+8], "track-repost", 12);
+						else {
+							fprintf(stderr, "scstream: unknown entry type '%c'\n", type);
+							cleanupordie(fromsc, tosc, NULL);
+							return EXIT_FAILURE;
+						}
+						if (repost)
+							printf("r %lu %c %s\n", userid, type, uuid);
+						else
+							printf("p %c %s\n", type, uuid);
+						if (ferror(stdout))
+							pexit("printf");
+						if (argc > 1)
+							saveordie(prevuuid, argv[1], fromsc, tosc);
+						uuid = NULL;
+						userid = 0;
+					}
+				}
+			}
+		}
 	}
-	cleanupordie(fromsc, tosc, NULL);
 }
