@@ -22,7 +22,7 @@ for id in $ids; do
 		sleep $wait
 	fi
 	echo $id
-	read <&3  # >tfw no unbuffered output
+	read <&3 || exit  # >tfw no unbuffered output
 	if test "$1"; then
 		printf $id >"$1"
 	fi
