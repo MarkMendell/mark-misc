@@ -10,9 +10,9 @@ int getcharordie(void);
 int gpchar(int print);
 void nokeydie(char *key);
 void eofdie(char *key);
-void readobj(char *key, int print);
-void readarr(char *skey, int print);
-void readvalue(char *key, int print);
+void readobj(char *key, int print, int depth);
+void readarr(char *skey, int print, int depth);
+void readvalue(char *key, int print, int depth);
 int main(int argc, char **argv);
 
 
@@ -62,7 +62,7 @@ eofdie(char *key)
 }
 
 void
-readobj(char *key, int print)
+readobj(char *key, int print, int depth)
 {
 	int c;
 	while ((c = gpchar(print)) != '}') {
@@ -81,14 +81,14 @@ readobj(char *key, int print)
 		gpchar(print);  // :
 		if (keymatch && (i == keylen))
 			break;
-		readvalue(NULL, print);
+		readvalue(NULL, print, depth+1);
 	}
 	if (key && (c == '}'))
 		nokeydie(key);
 }
 
 void
-readarr(char *skey, int print)
+readarr(char *skey, int print, int depth)
 {
 	int key = skey ? atoi(skey) : -1;
 	int i = 0;
@@ -101,7 +101,7 @@ readarr(char *skey, int print)
 			pexit("putchar");
 		if (key == i)
 			break;
-		readvalue(NULL, print);
+		readvalue(NULL, print, depth+1);
 		i++;
 	}
 	if ((c == ']') && print && (putchar(c) == EOF))
@@ -112,15 +112,15 @@ readarr(char *skey, int print)
 }
 
 void
-readvalue(char *key, int print)
+readvalue(char *key, int print, int depth)
 {
 	int c = getcharordie();
-	if (print && (c != '"') && (c != EOF) && (putchar(c) == EOF))
+	if (print && (c != EOF) && (depth || (c != '"')) && (putchar(c) == EOF))
 		pexit("putchar");
 	if (c == '{')
-		readobj(key, print);
+		readobj(key, print, depth+1);
 	else if (c == '[')
-		readarr(key, print);
+		readarr(key, print, depth+1);
 	else if (key || (c == EOF))
 		eofdie(key);
 	else if (c == '"') {
@@ -132,6 +132,8 @@ readvalue(char *key, int print)
 		}
 		if (c == EOF)
 			eofdie(key);
+		else if (print && depth && (putchar(c) == EOF))
+			pexit("putchar");
 	} else {
 		while (((c = getcharordie()) != EOF) && (c != ',') && (c != '}') && (c != ']'))
 			if (print && (putchar(c) == EOF))
@@ -145,5 +147,5 @@ int
 main(int argc, char **argv)
 {
 	for (int i=1; i<=argc; i++)
-		readvalue((i == argc) ? NULL : argv[i], i == argc);
+		readvalue((i == argc) ? NULL : argv[i], i == argc, 0);
 }
