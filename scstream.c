@@ -1,7 +1,9 @@
+#include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 
 unsigned int UUIDLEN = 36;
@@ -91,7 +93,7 @@ main(int argc, char **argv)
 	// Read save file (for where we left off)
 	char prevuuid[UUIDLEN+1];
 	FILE *savefile;
-	if ((argc > 1) && ((savefile = fopen(argv[1])) != NULL)) {
+	if ((argc > 1) && ((savefile = fopen(argv[1], "r")) != NULL)) {
 		size_t prevuuidlen = fread(prevuuid, 1, sizeof(prevuuid)-1, savefile);
 		if (ferror(savefile)) {
 			int olderrno = errno;
@@ -108,7 +110,8 @@ main(int argc, char **argv)
 	else
 		prevuuid[0] = '\0';
 
-	char offset[UUIDLEN+1] = {'\0'};
+	char offset[UUIDLEN+1];
+	offset[0] = '\0';
 	while (1) {
 		// Send HTTP request 
 		char *offsetq = offset[0] ? "&offset=" : "";
@@ -128,7 +131,7 @@ main(int argc, char **argv)
 		else if (len < 12)  // HTTP/1.1 XXX
 			die("status shorter than expected", fromsc, tosc, header);
 		else if (strncmp(&header[9], "200", 3)) {
-			fprintf(stderr, "scstream: soundcloud status: '%3s'\n", &header[9]);
+			fprintf(stderr, "scstream: soundcloud status: '%.3s'\n", &header[9]);
 			cleanupordie(fromsc, tosc, header);
 			return EXIT_FAILURE;
 		}
@@ -145,7 +148,7 @@ main(int argc, char **argv)
 	
 		// Read HTTP response data
 		char response[contentlen];
-		len = fread(response, 1, sizeof(response), fromsc)
+		len = fread(response, 1, sizeof(response), fromsc);
 		if (ferror(fromsc))
 			pexit("fread response", fromsc, tosc, NULL);
 		else if (len != sizeof(response))
@@ -165,6 +168,7 @@ main(int argc, char **argv)
 						strncpy(prevuuid, uuid, UUIDLEN);
 						if (argc > 1)
 							saveordie(prevuuid, argv[1], fromsc, tosc);
+						goto SLEEPRETRY;
 					} else
 						// Compare to the last uuid output
 						for (int j=0; j<UUIDLEN; j++) {
@@ -175,11 +179,11 @@ main(int argc, char **argv)
 								break;
 						}
 				}
-				while ((++i < contentlen) && ((reponse[i] != '"') || (response[i-1] == '\\')));
+				while ((++i < contentlen) && ((response[i] != '"') || (response[i-1] == '\\')));
 			}
 		}
 AFTERSCAN:  // i is either at the start of "uuid":"<uuid>", where <uuid> is right after the next
-						// entry we want to output, or such a uuid was never found
+            // entry we want to output, or such a uuid was never found
 		// All earlier entries
 		if (i >= contentlen-UUIDLEN-8)
 			strncpy(offset, uuid, UUIDLEN);
@@ -187,17 +191,26 @@ AFTERSCAN:  // i is either at the start of "uuid":"<uuid>", where <uuid> is righ
 		else {
 			offset[0] = '\0';
 			uuid = NULL;
+			unsigned long contentid = 0;
 			unsigned long userid = 0;
+			int wroteentry = 0;
 			for (i--; i>0; i--) {
 				// End of a json string
 				if (response[i] == '"') {
-					while ((--i-1 > 0) && ((response[i] != '"') || (response[i-1] == '\\')));
-					if (i-1 <= 0)
+					while ((--i > 0) && ((response[i] != '"') || (response[i-1] == '\\')));
+					if (i <= 0)
 						die("unmatched end quote in json response", fromsc, tosc, NULL);
 					// Start of uuid
 					if (!strncmp(&response[i], "\"uuid\":\"", 8)) {
 						uuid = &response[i+8];
-						uuid[i+8+UUIDLEN] = '\0';
+						// Seek forward for content id (assume next 'id' key after 'uuid')
+						long j;
+						for (j=i+8; j<contentlen-5; j++)  // 5 = length of "id":
+							if (!strncmp(&response[j], "\"id\":", 5))
+								break;
+						j += 5;
+						while (j<contentlen && isdigit(response[j]))
+							contentid = 10*contentid + (response[j++] - '0');
 					// Start of user id (we assume it's the first 'id' key before 'uuid')
 					} else if (uuid && !strncmp(&response[i], "\"id\":", 5)) {
 						userid = strtol(&response[i+5], NULL, 10);
@@ -217,18 +230,28 @@ AFTERSCAN:  // i is either at the start of "uuid":"<uuid>", where <uuid> is righ
 							return EXIT_FAILURE;
 						}
 						if (repost)
-							printf("r %lu %c %s\n", userid, type, uuid);
+							printf("r %lu %c %lu\n", userid, type, contentid);
 						else
-							printf("p %c %s\n", type, uuid);
+							printf("p %c %lu\n", type, contentid);
 						if (ferror(stdout))
-							pexit("printf");
+							pexit("printf", fromsc, tosc, NULL);
+						// Wait for signal that message was read (>tfw no unbuffered writes)
+						ssize_t c, n;
+						while (((n=read(5,&c,1))!=1)&&!((n==-1)&&!((errno==EAGAIN)||(errno==EINTR))));
+						if (n == -1)
+							pexit("read 5", fromsc, tosc, NULL);
 						if (argc > 1)
-							saveordie(prevuuid, argv[1], fromsc, tosc);
+							saveordie(uuid, argv[1], fromsc, tosc);
+						wroteentry = 1;
 						uuid = NULL;
+						contentid = 0;
 						userid = 0;
 					}
 				}
 			}
+			if (!wroteentry)
+SLEEPRETRY:
+				sleep(60*60*2);  // No new tracks, so sleep for a while before pinging soundcloud again
 		}
 	}
 }
