@@ -10,7 +10,7 @@ hnget()
 }
 
 
-if test "$1"; then
+if test -f "$1"; then
 	previd=$(cat "$1")
 fi
 ids=$(hnget /v0/topstories.json | tail -n 1 | tr -d '[]' | tr ',' '\n' | sort -n)
@@ -22,4 +22,8 @@ for id in $ids; do
 		sleep $wait
 	fi
 	echo $id
+	read <&3  # >tfw no unbuffered output
+	if test "$1"; then
+		printf $id >"$1"
+	fi
 done
