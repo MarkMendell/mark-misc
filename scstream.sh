@@ -4,23 +4,29 @@ if test -f "$1"; then
 fi
 token=$(cat)
 while true; do
-	unset entries
+	unset entries offset wroteone
 	while test $prevuuid && (test ! $firstuuid || test $(strcmp $firstuuid $prevuuid) -gt 0); do
-		entries="$(tls api-v2.soundcloud.com <<-EOF 2>/dev/null | tail -n 1 | jget collection | jvals | tac
-			GET /stream${firstuuid:+?offset=}$firstuuid HTTP/1.1
+		entries=$(tls api-v2.soundcloud.com <<-EOF 2>/dev/null | tail -n 1 | jget collection | jvals | tac
+			GET /stream${offset:+?offset=}$offset HTTP/1.1
 			host: api-v2.soundcloud.com
 			Connection: close
 			Authorization: OAuth $token
 			
-			EOF)$entries"
+			EOF)$entries
 		firstuuid=$(echo "$entries" | head -n 1 | jget uuid)
+		offset=$firstuuid
 	done
-	unset wroteone
 	while read -r entry; do
 		uuid=$(echo "$entry" | jget uuid)
 		if test ! $prevuuid || test $uuid -gt $prevuuid; then
+			echo "$entry"
+			exit
 			# output info
+			read <&3
 			prevuuid=$uuid
+			if test -f "$1"; then
+				echo $prevuuid >"$1"
+			fi
 			wroteone=1
 		fi
 	done <<-EOF
