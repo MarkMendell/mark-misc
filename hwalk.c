@@ -79,7 +79,7 @@ requireputc(FILE *f)
 {
 	int c = getputcordie(f);
 	if (c == EOF) {
-		fprintf(stderr, "hwalk: premature EOF while parsing\n");
+		fputs("hwalk: premature EOF while parsing\n", stderr);
 		fclose(f);
 		exit(EXIT_FAILURE);
 	}

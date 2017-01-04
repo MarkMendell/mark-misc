@@ -57,7 +57,7 @@ eofdie(char *key)
 	if (key)
 		nokeydie(key);
 	else
-		fprintf(stderr, "jget: premature EOF\n");
+		fputs("jget: premature EOF\n", stderr);
 	exit(EXIT_FAILURE);
 }
 

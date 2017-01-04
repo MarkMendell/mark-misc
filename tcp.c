@@ -14,7 +14,7 @@ main()
 	int reconnect = 0;
 	int hosti = 1;
 	if (argc < 2) {
-		fprintf(stderr, "usage: tcp [-r] host [port]\n");
+		fputs("usage: tcp [-r] host [port]\n", stderr);
 		return EXIT_FAILURE;
 	} else if ((argc > 2) && (!strcmp(argv[1], "-r"))) {
 		reconnect = 1;
