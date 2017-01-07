@@ -12,12 +12,11 @@ scget()
 getch()
 {
 	{
-		stty raw;
+		stty raw -igncr;
 		dd bs=3 count=1 2>/dev/null;
 		stty -raw;
 	} </dev/tty
 }
-
 
 if test ! -p /tmp/scviewmpvctl; then
 	mkfifo /tmp/scviewmpvctl
@@ -38,18 +37,27 @@ while read posttype b c d; do
 	fi
 	printf '%s - \33[4m%s\33[0m' "$(echo "$info" | jget user username)" "$(echo "$info" | jget title)"
 	if test $type = p; then
-		printf ' (%s tracks)' "$(echo "$info" | jget tracks | jvals | wc -l)"
+		printf ' (%s tracks)' "$(echo "$info" | jget tracks | jvals | wc -l | tr -d [:space:])"
 	fi
 	printf '\n'
 	while true; do
 		case "$(getch)" in
 			d )
-				echo "$info" | jget description | jdecode ;;
-			p )
+				echo "$info" | jget description | jdecode
+				echo ;;
+			s )
+				echo $type $id >&4 ;;
+			' ' )
 				url=$(echo "$info" | jget permalink_url | jdecode)
 				mpv --no-audio-display --input-file /tmp/scviewmpvctl "$url" &
 				while true; do
 					case "$(getch)" in
+						' ' )
+							echo cycle pause ;;
+						[A )
+							echo seek 60 ;;
+						[B )
+							echo seek -60 ;;
 						[C )
 							echo seek 5 ;;
 						[D )
@@ -61,8 +69,6 @@ while read posttype b c d; do
 				done >/tmp/scviewmpvctl
 				wait
 				printf '\r' ;;
-			s )
-				echo $type $id >&4 ;;
 			 )
 				exit ;;
 			 )

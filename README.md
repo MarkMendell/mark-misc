@@ -96,9 +96,9 @@ $ transcode "TGS × Maltine REMIX (FLAC)" /tmp/"TGS x Maltine REMIX (%s)" V0 V2
 /tmp/TGS x Maltine REMIX (V0)/./07 キラリ☆ (Avec Avec Remix).mp3
 /tmp/TGS x Maltine REMIX (V2)
 /tmp/TGS x Maltine REMIX (V2)/./cover.jpg
-/tmp/TGS x Maltine REMIX (V0)/./scans
-/tmp/TGS x Maltine REMIX (V0)/./scans/front.png
-/tmp/TGS x Maltine REMIX (V0)/./scans/back.png
+/tmp/TGS x Maltine REMIX (V2)/./scans
+/tmp/TGS x Maltine REMIX (V2)/./scans/front.png
+/tmp/TGS x Maltine REMIX (V2)/./scans/back.png
 /tmp/TGS x Maltine REMIX (V2)/./05 おんなじキモチ (Hercelot Remix).mp3
 /tmp/TGS x Maltine REMIX (V2)/./06 Limited addiction (okadada Remix).mp3
 /tmp/TGS x Maltine REMIX (V2)/./03 ゆうやけハナビ (banvox Remix).mp3

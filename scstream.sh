@@ -6,14 +6,14 @@ token=$(cat)
 while true; do
 	unset entries offset wroteone
 	while true; do
-		entries=$(tls api-v2.soundcloud.com <<-EOF 2>/dev/null | tail -n 1 | jget collection | jvals | tac
-			GET /stream${offset:+?offset=}$offset HTTP/1.1
-			host: api-v2.soundcloud.com
-			Connection: close
-			Authorization: OAuth $token
-			
-			EOF)$entries
-		#echo gettin firstuuid
+		entries=$(cat ~/stream-bak.json | tail -n 1 | jget collection | jvals | tac)
+		#entries=$(tls api-v2.soundcloud.com <<-EOF 2>/dev/null | tail -n 1 | jget collection | jvals | tac
+		#	GET /stream${offset:+?offset=}$offset HTTP/1.1
+		#	host: api-v2.soundcloud.com
+		#	Connection: close
+		#	Authorization: OAuth $token
+		#	
+		#	EOF)$entries
 		firstuuid=$(echo "$entries" | head -n 1 | jget uuid)
 		if test ! $prevuuid || test $(strcmp $firstuuid $prevuuid) -le 0; then
 			break;

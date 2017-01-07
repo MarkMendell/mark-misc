@@ -10,7 +10,7 @@ while read id; do
 	score=$(echo "$info" | jget score | jdecode)
 	printf "%s %s\n" "$score" "$title"
 	while true; do
-		case "$({ stty raw; c=$(dd bs=1 count=1 2>/dev/null); stty -raw; } </dev/tty)" in
+		case "$({ stty raw; dd bs=1 count=1 2>/dev/null; stty -raw; } </dev/tty)" in
 			o )
 				echo "$info" | jget url | jdecode | pbcopy ;;
 			O )
