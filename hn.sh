@@ -5,6 +5,6 @@ if test ! -p /tmp/hnstreamctl; then
 fi
 syncback() { scp ~/.hn* mmendell@unix.andrew.cmu.edu:streams; }
 trap "trap - INT; syncback; exit" INT
-hnstream ~/.hnstream 3</tmp/hnstreamctl | hnview 3>/tmp/hnstreamctl
+hnstream ~/.hnstream </tmp/hnstreamctl | hnview 3>/tmp/hnstreamctl 4>>~/.hnyes 5>>~/.hnno
 trap - INT
 syncback

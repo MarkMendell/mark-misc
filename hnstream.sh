@@ -21,7 +21,7 @@ for id in $ids; do
 		sleep $wait
 	fi
 	echo $id
-	read _ <&3 || exit  # >tfw no unbuffered output
+	read _ || exit  # >tfw no unbuffered output
 	if test "$1"; then
 		printf $id >"$1"
 	fi
