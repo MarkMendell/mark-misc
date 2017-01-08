@@ -45,6 +45,8 @@ while read posttype b c d; do
 			d )
 				echo "$info" | jget description | jdecode
 				echo ;;
+			o )
+				echo "$info" | jget permalink_url | pbcopy
 			s )
 				echo $type $id >&4 ;;
 			' ' )
