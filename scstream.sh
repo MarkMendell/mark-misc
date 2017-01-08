@@ -24,19 +24,15 @@ while true; do
 	while read -r entry; do
 		uuid=$(echo "$entry" | jget uuid)
 		if test ! $prevuuid || test $(strcmp $uuid $prevuuid) -gt 0; then
-			#echo gettin type
 			type=$(echo "$entry" | jget type)
 			if test $type = track-repost || test $type = playlist-repost; then
-				#echo gettin user id
 				printf 'r %s ' $(echo "$entry" | jget user id)
 			else
 				printf 'p '
 			fi
 			if test $type = track || test $type = track-repost; then
-				#echo gettin track id
 				printf 't %s\n' $(echo "$entry" | jget track id)
 			else
-				#echo gettin playlist id
 				printf 'p %s\n' $(echo "$entry" | jget playlist id)
 			fi
 			read <&3 || exit

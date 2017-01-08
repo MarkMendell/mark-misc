@@ -79,6 +79,9 @@ termbox src: https://github.com/nsf/termbox/blob/master/src/termbox.c
 traces read calls for "Content-length: "
 fork; wait for signal from parent; exec
 
+### scview
+check for exit before process getch in scview
+
 ### sockfifo
 > $ sockfifo tls www.andrew.cmu.edu
 > /tmp/sockfifo.83182

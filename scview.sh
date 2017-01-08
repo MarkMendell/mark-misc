@@ -18,6 +18,20 @@ getch()
 	} </dev/tty
 }
 
+cmd()
+{
+	case "$1" in
+		d )
+			echo "$info" | jget description | jdecode
+			echo ;;
+		o )
+			echo "$info" | jget permalink_url | pbcopy ;;
+		s )
+			echo $type $id >&4 ;;
+	esac
+}
+
+
 if test ! -p /tmp/scviewmpvctl; then
 	mkfifo /tmp/scviewmpvctl
 fi
@@ -37,44 +51,45 @@ while read posttype b c d; do
 	fi
 	printf '%s - \33[4m%s\33[0m' "$(echo "$info" | jget user username)" "$(echo "$info" | jget title)"
 	if test $type = p; then
-		printf ' (%s tracks)' "$(echo "$info" | jget tracks | jvals | wc -l | tr -d [:space:])"
+		printf ' (%s tracks)\n' "$(echo "$info" | jget tracks | jvals | wc -l | tr -d [:space:])"
+	else
+		seconds=$(($(echo "$info" | jget duration) / 1000))
+		printf ' (%s:%02s)\n' $((seconds / 60)) $((seconds % 60))
 	fi
-	printf '\n'
 	while true; do
-		case "$(getch)" in
-			d )
-				echo "$info" | jget description | jdecode
-				echo ;;
-			o )
-				echo "$info" | jget permalink_url | pbcopy
-			s )
-				echo $type $id >&4 ;;
+		c=$(getch)
+		case "$c" in
 			' ' )
 				url=$(echo "$info" | jget permalink_url | jdecode)
 				mpv --no-audio-display --input-file /tmp/scviewmpvctl "$url" &
 				while true; do
-					case "$(getch)" in
+					c=$(getch)
+					case "$c" in
 						' ' )
-							echo cycle pause ;;
+							echo cycle pause >/tmp/scviewmpvctl ;;
 						[A )
-							echo seek 60 ;;
+							echo seek 60 >/tmp/scviewmpvctl ;;
 						[B )
-							echo seek -60 ;;
+							echo seek -60 >/tmp/scviewmpvctl ;;
 						[C )
-							echo seek 5 ;;
+							echo seek 5 >/tmp/scviewmpvctl ;;
 						[D )
-							echo seek -5 ;;
+							echo seek -5 >/tmp/scviewmpvctl ;;
 						 )
-							echo quit
+							echo quit >/tmp/scviewmpvctl
 							break ;;
+						* )
+							cmd "$c" ;;
 					esac
-				done >/tmp/scviewmpvctl
+				done
 				wait
 				printf '\r' ;;
 			 )
 				exit ;;
 			 )
 				break ;;
+			* )
+				cmd "$c" ;;
 		esac
 	done
 	echo >&3
