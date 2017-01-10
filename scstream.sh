@@ -6,7 +6,7 @@ token=$(cat)
 while true; do
 	unset entries offset wroteone
 	while true; do
-		entries=$(cat ~/stream-bak.json | tail -n 1 | jget collection | jvals | tac)
+		entries=$(tail -n 1 <~/streak-bak.json | jget collection | jvals | tac)
 		#entries=$(tls api-v2.soundcloud.com <<-EOF 2>/dev/null | tail -n 1 | jget collection | jvals | tac
 		#	GET /stream${offset:+?offset=}$offset HTTP/1.1
 		#	host: api-v2.soundcloud.com
@@ -35,7 +35,7 @@ while true; do
 			else
 				printf 'p %s\n' $(echo "$entry" | jget playlist id)
 			fi
-			read <&3 || exit
+			read _ <&3 || exit
 			prevuuid=$uuid
 			if test "$1"; then
 				echo $prevuuid >"$1"
