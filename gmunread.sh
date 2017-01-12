@@ -25,8 +25,7 @@ nthstring()
 to=/tmp/gunread.to.$$
 from=/tmp/gunread.from.$$
 mkfifo $to $from
-tls imap.gmail.com 993 >$from <$to &
-exec 3<$from 4>$to
+tls imap.gmail.com 993 >$from <$to & exec 3<$from 4>$to
 authstring=$(cat)
 cat <<-EOF >&4 &
 	1 AUTHENTICATE PLAIN
