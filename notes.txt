@@ -1,24 +1,8 @@
-### btls
-fix broken getchar stuff! check those calls, man!
+### dnse
+(dunce) fake dns to be localhost
 
 ### hwalk
 current check for matching strings is wrong (e.g. ---> will not match -->)
-
-### scstream
-> $ mkfifo /tmp/fromsc /tmp/tosc
-> $ tls -r api-v2.soundcloud.com >/tmp/fromsc </tmp/tosc &
-> $ scstream ~/.scstreamlast <~/.sccookie 3</tmp/fromsc 4>/tmp/tosc | lread
-> r 78784273 t 300124598
-> r 4351913 t 299410580
-> p t 300107987
-> $ cat ~/.scstreamlast
-> 2016-10-27T15:10:59Z  # or some timestamp; possibly just thing for offset=?
-see "EPIPE" in fputc (called by fwrite)
-curl -H "Authorization: OAuth sd89f88asdufhsfhasudhf98sh" "https://api-v2.soundcloud.com/stream"
-  offset=some_uuid
-  limit=10
-https://tools.ietf.org/html/rfc5246
-for the future: separate program for tls; read/write like $ scstream 3<>$(rwfifo tlsh api-v2.soundcloud.com)
 
 ### pick
 > $ ls -1 | pick
@@ -79,31 +63,9 @@ termbox src: https://github.com/nsf/termbox/blob/master/src/termbox.c
 traces read calls for "Content-length: "
 fork; wait for signal from parent; exec
 
-### scview
-check for exit before process getch in scview
-
-### sockfifo
-> $ sockfifo tls www.andrew.cmu.edu
-> /tmp/sockfifo.83182
-> $ printf "GET /user/mmendell/ HTTP/1.1\r\nhost: www.andrew.cmu.edu\r\n\r\n" > /tmp/sockfifo.83182
-> $ cat /tmp/sockfifo.83182
-> HTTP/1.1 200 OK
-> Content-Length: 84
-> Content-Type: text/html
-> 
-> <head><meta charset="utf-8" /></head>
-> <body>
-> <a href="ha">Fusion HA</a>
-> ♫
-> </body>
-maybe impossible with same pipe because of reading same thread as writing
-
 ### twstream
 https://dev.twitter.com/oauth/overview/authorizing-requests
 ^^^^ NAHHHHHHHHH
 https://dev.twitter.com/oauth/application-only
 https://dev.twitter.com/rest/reference/get/statuses/user_timeline
 https://dev.twitter.com/rest/reference/get/statuses/show/id
-
-### urldecode
-pexit should start with "urldecode: "

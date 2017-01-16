@@ -61,9 +61,10 @@ while read posttype b c d; do
 		case "$c" in
 			' ' )
 				url=$(echo "$info" | jget permalink_url | jdecode)
-				mpv --no-audio-display --input-file /tmp/scviewmpvctl "$url" &
+				mpv --no-audio-display --input-file /tmp/scviewmpvctl "$url" & mpvpid=$!
 				while true; do
 					c=$(getch)
+					kill -0 $mpvpid || break
 					case "$c" in
 						' ' )
 							echo cycle pause >/tmp/scviewmpvctl ;;

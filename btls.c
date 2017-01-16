@@ -10,8 +10,10 @@ int
 peek(void)
 {
 	int c = getchar();
-	if (c != EOF)
-		ungetc(c, stdin);
+	if ((c != EOF) && (ungetc(c, stdin) == EOF)) {
+		perror("btls: ungetc");
+		exit(EXIT_FAILURE);
+	}
 	return c;
 }
 
