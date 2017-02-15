@@ -7,12 +7,12 @@ asksync()
 }
 
 
-asksync && scp mmendell@unix.andrew.cmu.edu:streams/.hn* ~
+asksync && scp mmendell@unix.andrew.cmu.edu:streams/.hnstream ~
 if test ! -p /tmp/hnstreamctl; then
 	mkfifo /tmp/hnstreamctl
 fi
-syncback() { asksync && scp ~/.hn* mmendell@unix.andrew.cmu.edu:streams; }
+syncback() { asksync && scp ~/.hnstream mmendell@unix.andrew.cmu.edu:streams; }
 trap "trap - INT; syncback; exit" INT
-hnstream ~/.hnstream </tmp/hnstreamctl | hnview 3>/tmp/hnstreamctl 4>>~/.hnyes 5>>~/.hnno
+hnstream ~/.hnstream </tmp/hnstreamctl | hnview 3>/tmp/hnstreamctl
 trap - INT
 syncback

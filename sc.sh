@@ -7,12 +7,9 @@ asksync()
 }
 
 
-asksync && scp mmendell@unix.andrew.cmu.edu:streams/.scstream ~
-if test ! -p /tmp/scstreamctl; then
-	mkfifo /tmp/scstreamctl
-fi
-syncback() { asksync && scp ~/.scstream mmendell@unix.andrew.cmu.edu:streams; }
+asksync && scp mmendell@unix.andrew.cmu.edu:streams/{.scstream,scpicks} ~
+syncback() { asksync && scp ~/{.scstream,scpicks} mmendell@unix.andrew.cmu.edu:streams; }
 trap "trap - INT; syncback; exit" INT
-scstream ~/.scstream <~/.sccookie 3</tmp/scstreamctl | scview 3>/tmp/scstreamctl 4>>~/scpicks
+scstream ~/.scstream <~/.sccookie 3>>~/scpicks
 trap - INT
 syncback
