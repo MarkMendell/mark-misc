@@ -70,3 +70,4 @@ traces read calls for "Content-length: "
 fork; wait for signal from parent; exec
 
 ### server stuff
+tcpl 80 - tlss nn.audio
