@@ -1,8 +1,14 @@
 ### dnse
 (dunce) fake dns to be localhost
 
+### gme
+print group name before messages
+
 ### hwalk
 current check for matching strings is wrong (e.g. ---> will not match -->)
+
+### pcm
+(snip 1 99 <~/projects/daw.sh/smp/kick; sleep 2; snip 1 99 <~/projects/daw.sh/smp/kick) | pcm 1
 
 ### pick
 > $ ls -1 | pick
@@ -63,9 +69,4 @@ termbox src: https://github.com/nsf/termbox/blob/master/src/termbox.c
 traces read calls for "Content-length: "
 fork; wait for signal from parent; exec
 
-### twstream
-https://dev.twitter.com/oauth/overview/authorizing-requests
-^^^^ NAHHHHHHHHH
-https://dev.twitter.com/oauth/application-only
-https://dev.twitter.com/rest/reference/get/statuses/user_timeline
-https://dev.twitter.com/rest/reference/get/statuses/show/id
+### server stuff

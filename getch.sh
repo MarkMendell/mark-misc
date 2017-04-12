@@ -1,4 +1,6 @@
 #!/bin/sh
-stty raw -echo
-dd bs=3 count=1 2>/dev/null
-stty -raw echo
+{
+	stty -icanon -echo -icrnl -isig
+	dd bs=8 count=1 2>/dev/null
+	stty icanon echo icrnl isig
+} </dev/tty

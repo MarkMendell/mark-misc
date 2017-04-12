@@ -52,10 +52,10 @@ playurl()
 }
 
 
-mkfifo /tmp/scstream.$$.mpvctl /tmp/scstream.$$.playlist
+mkfifo /tmp/scstream.$$.mpvctl
 trap 'rm /tmp/scstream.$$.*' EXIT
 token=$(cat)
-test -f "$1" && prevuuid=$(cat "$1")
+test -f "$1" && prevuuid=$(cat <"$1")
 while true; do
 	unset entries offset wroteone
 	# Get stream entries from soundcloud
@@ -83,21 +83,27 @@ while true; do
 		if test ! $prevuuid || test $(strcmp $uuid $prevuuid) -gt 0; then
 			# Display entry
 			type=$(printf %s "$entry" | jget type)
+			artistinfo=$(printf %s "$entry" | jget ${type%-repost} user)
+			if grep $(printf %s "$artistinfo" | jget id) <~/sctoskip >/dev/null; then
+				artist=$(printf %s "$artistinfo" | jget username | jdecode)
+				printf 'skipping %s...\n' "$artist"
+				continue
+			fi
 			if test $type = track-repost || test $type = playlist-repost; then
-				reposter=$(printf %s $entry | jget user username | jdecode)
+				reposter=$(printf %s "$entry" | jget user username | jdecode)
 				printf 'Repost by %s:\n' "$reposter"
 			fi
 			info=$(printf %s "$entry" | jget ${type%-repost})
 			username=$(printf %s "$info" | jget user username | jdecode)
 			title=$(printf %s "$info" | jget title | jdecode)
-			printf '%s - \33[4m%s\33[0m' "$username" "$title"
+			printf '%s - [4m%s[0m' "$username" "$title"
 			if test $type = track || test $type = track-repost; then
 				seconds=$(($(printf %s "$info" | jget duration) / 1000))
 				printf ' (%s:%02s)\n' $((seconds / 60)) $((seconds % 60))
 			else
 				tracks=$(printf %s "$info" | jget tracks)
-				count=$(printf %s "$track" | jvals | wc -l | tr -d [:space:])
-				printf ' (%s tracks)\n' ")" "$count"
+				count=$(printf %s "$tracks" | jvals | wc -l | tr -d [:space:])
+				printf ' (%s tracks)\n' "$count"
 			fi
 			# Do commands for that entry
 			while true; do
@@ -110,14 +116,15 @@ while true; do
 						printf %s "$info" | jget permalink_url | tr -d '\n' | pbcopy ;;
 					t )
 						# Have user edit description of mix into google search lines
-						mixdesc=$(printf %s "%info" | jget description | jdecode)
+						mixdesc=$(printf %s "$info" | jget description | jdecode)
 						printf '%s\n' "$mixdesc" >/tmp/scstream.$$.playlist
 						${EDITOR:-vi} /tmp/scstream.$$.playlist </dev/tty
 						# Search google for each track to play
 						while read -r search; do
 							echo "$search"
+							echo "$search" | pbcopy
 							test "$(getch)" =  && break
-							playurl "$(googlepick "$search")" 3
+							#playurl "$(googlepick "$search")" 3
 						done </tmp/scstream.$$.playlist ;;
 					' ' )
 						playurl "$(printf %s "$info" | jget permalink_url | jdecode)" ;;

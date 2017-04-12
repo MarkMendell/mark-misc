@@ -146,6 +146,14 @@ readvalue(char *key, int print, int depth)
 int
 main(int argc, char **argv)
 {
-	for (int i=1; i<=argc; i++)
-		readvalue((i == argc) ? NULL : argv[i], i == argc, 0);
+	int c;
+	while ((c = getcharordie()) != EOF) {
+		if (ungetc(c, stdin) == EOF)
+			pexit("ungetc");
+		for (int i=1; i<=argc; i++)
+			readvalue((i == argc) ? NULL : argv[i], i == argc, 0);
+		if (putchar('\n') == EOF)
+			pexit("putchar");
+		while (((c = getcharordie()) != EOF) && (c != '\n'));
+	}
 }

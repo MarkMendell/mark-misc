@@ -3,6 +3,8 @@
 # ... stuff arithmetically.
 readvar()
 {
+	echo "$1" | grep var\ $2
+	exit
 	value=$(($(echo "$1" | grep var\ $2 | sed "1 s/.*var $2 = \(.*\);.*/\1/g; q")))
 	eval "$2=$value"
 }
@@ -14,7 +16,7 @@ if test "$1" = -s; then
 fi
 dlurl=$(echo "$1" | sed 's/\.com.*/.com/g')
 page=$(curl -s "$1")
-dlurl=$dlurl$(echo "$page" | grep \'dlbutton\' | cut -f 2 -d \")
+dlurl=$dlurl$(echo "$page" | grep \'dlbutton\' | tail -1 | cut -f 2 -d \")
 readvar "$page" m
 readvar "$page" k
 readvar "$page" z

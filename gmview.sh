@@ -42,7 +42,7 @@ for id in $(head -n 1 <&3 | tail -c +10 | tr -d ); do
 	if echo "$subjstart" | grep '^ NIL' >/dev/null; then
 		printf " %s\n" "$(nthstring "$entry" 1)"
 	else
-		printf " %s \33[4m%s\33[0m\n" "$(nthstring "$entry" 2)" "$(nthstring "$entry" 1)"
+		printf " %s [4m%s[0m\n" "$(nthstring "$entry" 2)" "$(nthstring "$entry" 1)"
 	fi
 	while true; do
 		case "$(getch)" in

@@ -1,0 +1,20 @@
+diff --git a/scstream.sh b/scstream.sh
+index 3d46a7a..34cadf7 100644
+--- a/scstream.sh
++++ b/scstream.sh
+@@ -83,8 +83,14 @@ while true; do
+ 		if test ! $prevuuid || test $(strcmp $uuid $prevuuid) -gt 0; then
+ 			# Display entry
+ 			type=$(printf %s "$entry" | jget type)
++			artistinfo=$(printf %s "$entry" | jget ${type%-repost} user)
++			if grep $(printf %s "$artistinfo" | jget id) <~/sctoskip >/dev/null; then
++				artist=$(printf %s "$artistinfo" | jget username | jdecode)
++				printf 'skipping %s...\n' "$artist"
++				continue
++			fi
+ 			if test $type = track-repost || test $type = playlist-repost; then
+-				reposter=$(printf %s $entry | jget user username | jdecode)
++				reposter=$(printf %s "$entry" | jget user username | jdecode)
+ 				printf 'Repost by %s:\n' "$reposter"
+ 			fi
+ 			info=$(printf %s "$entry" | jget ${type%-repost})

@@ -60,10 +60,10 @@ CONNECT:
 		}
 		if (stdinpoll.revents)
 			rbread(stdbuf, STDIN_FILENO);
-		stdinpoll.revents = POLLIN * (!rbfull(&stdbuf) && !stdbuf.reof);
-		socketpoll.revents = POLLERR | (POLLHUP * !(stdbuf.weof || sockbuf.reof));
-		socketpoll.revents |= (POLLOUT * !rbempty(&stdbuf)) | (POLLIN * !rbfull(&sockbuf));
-		stdoutpoll.revents = POLLERR | (POLLHUP * !sockbuf.weof) | (POLLOUT * !rbempty(&sockbuf));
+		stdinpoll.events = POLLIN * (!rbfull(&stdbuf) && !stdbuf.reof);
+		socketpoll.events = POLLERR | (POLLHUP * !(stdbuf.weof || sockbuf.reof));
+		socketpoll.events |= (POLLOUT * !rbempty(&stdbuf)) | (POLLIN * !rbfull(&sockbuf));
+		stdoutpoll.events = POLLERR | (POLLHUP * !sockbuf.weof) | (POLLOUT * !rbempty(&sockbuf));
 		rberrordie(&stdbuf, socketfd);
 		rberrordie(&sockbuf, socketfd);
 		if ((stdbuf.weof || sockbuf.reof) && rbempty(&sockbuf)) {

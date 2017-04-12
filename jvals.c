@@ -6,7 +6,7 @@ int
 getcharordie(void)
 {
 	int c = getchar();
-	if ((c == EOF) || (c == '\n')) {
+	if (c == EOF) {
 		int err = ferror(stdin);
 		if (err)
 			perror("jvals: getchar");
@@ -39,26 +39,32 @@ readstring(int print)
 int
 main(void)
 {
-	int haskeys = getcharordie() == '{';
 	while (1) {
-		if (haskeys) {
-			getcharordie();  // "
-			readstring(0);
-			getcharordie();  // :
+		int c = getcharordie();
+		int haskeys = c == '{';
+		while ((c != '}') && (c != ']')) {
+			if (haskeys) {
+				getcharordie();  // "
+				readstring(0);
+				getcharordie();  // :
+			}
+			int depth = 0;
+			int empty = !haskeys;
+			while ((((c = getcharordie()) != ',') && (c != '}') && (c != ']')) || depth) {
+				empty = 0;
+				depth += ((c == '{') || (c == '[')) - ((c == '}') || (c == ']'));
+				if (c == '"') {
+					if (depth)
+						putcharordie('"');
+					readstring(1);
+					if (depth)
+						putcharordie('"');
+				} else
+					putcharordie(c);
+			}
+			if (!empty)
+				putcharordie('\n');
 		}
-		int depth = 0;
-		int c;
-		while ((((c = getcharordie()) != ',') && (c != '}') && (c != ']')) || depth) {
-			depth += ((c == '{') || (c == '[')) - ((c == '}') || (c == ']'));
-			if (c == '"') {
-				if (depth)
-					putcharordie('"');
-				readstring(1);
-				if (depth)
-					putcharordie('"');
-			} else
-				putcharordie(c);
-		}
-		putcharordie('\n');
+		getcharordie();  // newline
 	}
 }

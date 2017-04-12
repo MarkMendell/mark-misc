@@ -62,8 +62,8 @@ hello  # instant
 ```
 
 # [tls](../../raw/master/tls.sh)
-`tls [-r] host [port]`  
-sends input to `host:port` (default 443) over TLS and outputs responses, reconnecting automatically if `-r` is specified. Requires [openssl](https://www.openssl.org/) and [ready](#ready).
+`tls host [port]`  
+sends input to `host:port` (default 443) over TLS and outputs responses. Requires [openssl](https://www.openssl.org/).
 ```
 $ printf "GET /user/mmendell/ HTTP/1.1\r\nhost: www.andrew.cmu.edu\r\n\r\n" | tls www.andrew.cmu.edu
 HTTP/1.1 200 OK
