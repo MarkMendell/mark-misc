@@ -1,0 +1,10 @@
+void 
+die(char *errfmt, ...)
+{
+	va_list argp;
+	va_start(argp, errfmt);
+	vfprintf(stderr, errfmt, argp);
+	va_end(argp);
+	fputc('\n', stderr);
+	exit(EXIT_FAILURE);
+}
