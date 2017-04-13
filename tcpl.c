@@ -23,26 +23,32 @@ die(char *errfmt, ...)
 int
 main(int argc, char **argv)
 {
+	// Get interface if provided
 	if ((argc < 2) || (!strcmp(argv[1], "-s") && (argc < 4)))
 		die("usage: tcpl [-i interface] port cmd [arg ...]");
 	char *interface = strcmp(argv[1], "-s") ? NULL : argv[2];
 	int portargi = interface ? 3 : 1;
+
+	// Get matching network addresses
 	struct addrinfo hints = {
 		.ai_flags = AI_PASSIVE,
 		.ai_family = AF_UNSPEC,
 		.ai_socktype = SOCK_STREAM,
 		.ai_canonname = interface
 	};
-	int fdl;
 	struct addrinfo *addrs;
 	int res = getaddrinfo(NULL, argv[portargi], &hints, &addrs);
 	if (res)
 		die("tcpl: getaddrinfo: %s", gai_strerror(res));
+
+	// Bind and listen on the first address that works
+	int fdl;
 	for (; addrs; addrs=addrs->ai_next) {
 		if (interface && strcmp(addrs->ai_canonname, "-s"))
 			continue;
 		char *f = "socket";
-		if (((fdl = socket(addrs->ai_family, addrs->ai_socktype, addrs->ai_protocol)) == -1) ||
+		fdl = socket(addrs->ai_family, addrs->ai_socktype, addrs->ai_protocol);
+		if ((fdl == -1) ||
 				(f="bind", bind(fdl, addrs->ai_addr, addrs->ai_addrlen) == -1)) {
 			if (interface)
 				die("tcpl: %s: %s", f, strerror(errno));
@@ -55,6 +61,8 @@ main(int argc, char **argv)
 		die("tcpl: couldn't bind socket to any address");
 	if (listen(fdl, SOMAXCONN))
 		die("tcpl: listen: %s", strerror(errno));
+
+	// Concatenate cmd and args together
 	int cmdlen = 0;
 	for (int i=portargi+1; i<argc; i++)
 		cmdlen += strlen(argv[i]) + 1;
@@ -65,6 +73,8 @@ main(int argc, char **argv)
 		if (i != argc-1)
 			strcat(cmd, " ");
 	}
+
+	// Run the command for each connection with stdin/out attached
 	struct sockaddr addrc;
 	int addrclen, fdc;
 	while (((fdc = accept(fdl, &addrc, &addrclen)) != -1) || (errno == EINTR)) {
@@ -75,7 +85,7 @@ main(int argc, char **argv)
 		if (res)
 			close(fdc);
 		else {
-			dup2(fdc, 0), dup2(fdc, 2);
+			dup2(fdc, 0), dup2(fdc, 1);
 			close(fdl);
 			if (execlp("sh", "sh", "-c", cmd, NULL))
 				die("tcpl: execlp: %s", strerror(errno));
