@@ -24,9 +24,9 @@ int
 main(int argc, char **argv)
 {
 	// Get interface if provided
-	if ((argc < 2) || (!strcmp(argv[1], "-s") && (argc < 4)))
+	if ((argc < 2) || (!strcmp(argv[1], "-i") && (argc < 4)))
 		die("usage: tcpl [-i interface] port cmd [arg ...]");
-	char *interface = strcmp(argv[1], "-s") ? NULL : argv[2];
+	char *interface = strcmp(argv[1], "-i") ? NULL : argv[2];
 	int portargi = interface ? 3 : 1;
 
 	// Get matching network addresses
@@ -44,7 +44,9 @@ main(int argc, char **argv)
 	// Bind and listen on the first address that works
 	int fdl;
 	for (; addrs; addrs=addrs->ai_next) {
-		if (interface && strcmp(addrs->ai_canonname, "-s"))
+		printf("%d\n", addrs->ai_flags & AI_CANONNAME);
+		continue;
+		if (interface && strcmp(addrs->ai_canonname, interface))
 			continue;
 		char *f = "socket";
 		fdl = socket(addrs->ai_family, addrs->ai_socktype, addrs->ai_protocol);
@@ -57,6 +59,8 @@ main(int argc, char **argv)
 		}
 		break;
 	}
+	puts("done");
+	exit(0);
 	if (!addrs)
 		die("tcpl: couldn't bind socket to any address");
 	if (listen(fdl, SOMAXCONN))
