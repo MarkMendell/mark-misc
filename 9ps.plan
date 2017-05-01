@@ -1,0 +1,3 @@
+9ps dir
+- read size[4], type[1], tag[2]
+- write 'unknown type'

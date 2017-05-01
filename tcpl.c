@@ -40,10 +40,8 @@ main(int argc, char **argv)
 	// Bind and listen on the first address that works
 	int fdl;
 	for (; addrs; addrs=addrs->ai_next) {
-		char *f = "socket";
 		fdl = socket(addrs->ai_family, addrs->ai_socktype, addrs->ai_protocol);
-		if ((fdl != -1) &&
-				(f="bind", bind(fdl, addrs->ai_addr, addrs->ai_addrlen) != -1))
+		if ((fdl != -1) && (bind(fdl, addrs->ai_addr, addrs->ai_addrlen) != -1))
 			break;
 	}
 	if (!addrs)
