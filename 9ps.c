@@ -65,6 +65,7 @@ get(char *buf, size_t len, char *tag)
 int
 main(int argc, char **argv)
 {
+	setbuf(stdout, NULL);
 	char hdr[7];
 	while (1) {
 		get(hdr, 7, NULL);
