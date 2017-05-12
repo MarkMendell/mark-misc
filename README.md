@@ -1,11 +1,3 @@
-# [avg](../../raw/master/avg.sh)
-`avg [precision]`  
-reads newline-separated integers and outputs their average to `precision` digits past the decimal (default of 2).
-```
-$ printf '5\n10\n-2\n' | avg 1
-4.3
-```
-
 # [btls](../../raw/master/btls.c)
 `btls`  
 reads torrent formatted input and lists the files included.
@@ -31,14 +23,6 @@ $ printf '5\n10\n-2\n' | lread
 5   # <ENTER>
 10  # <ENTER>
 -2  # <ENTER>
-```
-
-# [med](../../raw/master/med.sh)
-`med`  
-reads newline-separated integers and outputs their median, choosing the lower value if there is an even count.
-```
-$ printf '5\n10\n-2\n' | med
-5
 ```
 
 # [mixtape.moe](../../raw/master/mixtape.moe.bash)
