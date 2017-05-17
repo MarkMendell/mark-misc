@@ -1,0 +1,20 @@
+sd9p dir [authcmd [arg ...]]
+file unique id, qid list
+fid, path, ...
+if args: pipe, fork, exec
+buf = malloc(7), len = 0
+forever:
+read size[4], type[1], tag[2]
+if !len & type ! v: read msg, err
+switch type:
+case version:
+	msize[4], size[2], version
+	if not 9P2000 (ncmp): unknown
+	if len < 7: err
+	update len & buf
+	say rversion tag size 9P2000
+case auth:
+	if no args: err
+	
+default:
+	sayerr
