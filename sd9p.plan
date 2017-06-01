@@ -1,20 +1,70 @@
+qid:{dev,ino,type,v}
+{fid,q
+	auth:{pidstatus,r,w}}
+MLEN=0,BUF,NEW,GOT,WLK,TAGLK
+FS[MXF],FLK,QS,QC=0,QLK
+
 sd9p dir [authcmd [arg ...]]
-file unique id, qid list
-fid, path, ...
-if args: pipe, fork, exec
-buf = malloc(7), len = 0
+BUF=mlc(MINL)
+init NEW,GOT,STRERR,WTAGFQLK
+0..FS:.fid=NOFID
+ts[TC]
+0..TC-:
+	init ts[i].{msg,lk,tag}
+	ts[i].t=t(&t[i])
 forever:
 read size[4], type[1], tag[2]
-if !len & type ! v: read msg, err
-switch type:
-case version:
+if !MLEN & type ! v:
+	read msg, err
+if type=version:
 	msize[4], size[2], version
 	if not 9P2000 (ncmp): unknown
-	if len < 7: err
-	update len & buf
+	if len < MINL: err
+	update MLEN & BUF
+	for 0..TC-:
+		lk{ts[i].msg=die},SIGUSR1
+	rm FIDS
 	say rversion tag size 9P2000
+elif type=flush:
+	if NOTAG: say flush
+	.w TAGLK
+	for 0..TC-:	ts[i].tag match:
+		lk{ts[i].msg=flush},SIGUSR1
+		swap tag,found,break
+	w TAGLK.
+	if !found: say flush
+else:
+	post(NEW)
+	while wait(GOT): ! EINTR: die
+
+/worker {msg,mlk,tag}/
+len=0,buf=NULL
+forever:
+while wait(NEW): ! EINTR: die
+if len!=LEN:free,malloc,len=LEN
+swap BUF,buf
+t.msg=NONE
+memcpy(t.tag,buf+5,2)
+post GOT
+if tag=NOTAG:err
+switch type:
 case auth:
-	if no args: err
-	
+	afid[4] uname[s] aname[s]
+	if no args+1: err,END
+	.w FLK
+	i0..MXF: NOFID,break
+	i=MXF?err:
+		pipe+fork+exec args
+		update FC entry
+		say Rauth qid
+	w FLK.
 default:
 	sayerr
+END:
+.r TAGLOCK
+lk{msg==FLUSH?say flush,=NONE}
+tag=NOTAG
+r TAGLOCK.
+
+SIGPIPE?
+CHECK FOR ABORT!
