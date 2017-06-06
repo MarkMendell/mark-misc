@@ -15,7 +15,7 @@
 
 const int THREADC = 32;
 const int MAXFIDS = 64;
-const int MINLEN = 256;
+const int MINLEN = 256;  // > 237 (largest rwalk message)
 const uint8_t TVERSION = 100;
 const uint8_t TAUTH = 102;
 const uint8_t TATTACH = 104;
@@ -46,9 +46,17 @@ struct worker {
 struct auth {
 	pid_t pidstatus;  // 0/1 is exit status, otherwise pid
 	int r, w;
+	char *uname, *aname;
+};
+struct file {
+	int fd, pfd;
+	uint64_t offset;
+	char *name;
+	char *dirent;
 };
 union info {
 	struct auth auth;
+	struct file f;
 };
 struct finfo {
 	uint32_t fid;
@@ -170,7 +178,8 @@ parsemsg(char *msg, char *fmt, ...)
 	va_start(ap, fmt);
 	int err=0;
 	for (char *cp=fmt; *cp; cp++) {
-		if ((isdigit(*cp) && (len < i+*cp-'0')) || (len < i+2+le2uint(msg+i, 2))) {
+		if ((isdigit(*cp) && (len < i+*cp-'0')) ||
+				((*cp == 's') && ((len < i+2) || (len < i+2+le2uint(msg+i, 2))))) {
 			err=1, sayerr(msg, "short message");
 			break;
 		}
@@ -192,11 +201,11 @@ parsemsg(char *msg, char *fmt, ...)
 			i += 8;
 			break;
 		} case 's': {
-			size_t len = le2uint(msg+i, 2);
+			uint16_t len = le2uint(msg+i, 2);
 			char **s = va_arg(ap, char**);
-			if (!((ss[cp-fmt] = ((*s = malloc(2+len))))))
-				die("sd9p: malloc %d: %s", 2+len, strerr(errno));
-			memcpy(*s, msg+i, 2+len);
+			if (!((ss[cp-fmt] = *s = malloc(len+1))))
+				die("sd9p: malloc %d: %s", len+1, strerr(errno));
+			*stpncpy(*s, msg+i+2, len) = '\0';
 			i += 2+len;
 			break;
 		}
@@ -206,11 +215,49 @@ parsemsg(char *msg, char *fmt, ...)
 	if (!err && (i != len))
 		err=1, sayerr(msg, "long message");
 	if (err) {
-		for (size_t i=0; i<sizeof(ss); i++)
+		for (size_t i=0; i<sizeof(ss)/sizeof(char*); i++)
 			free(ss[i]);
 		return 1;
 	}
 	return 0;
+}
+
+void
+cleananame(char **aname)
+{
+	*aname = realloc(*aname, strlen(*aname)+3);
+	char *s = *aname;
+	uint16_t len = strlen(s);
+
+	// Add leading and trailing slash
+	memmove(s+1, s, (len++)+1);
+	s[0] = '/';
+	s[len++] = '/';
+	s[len] = '\0';
+
+	// Remove double slashes and .'s
+	uint16_t i = 0;
+	while (i < len-1)
+		if ((s[i] == '/') && (s[i+1] == '/'))
+			memmove(s+i, s+i+1, len-i), len--;
+		else if ((s[i] == '/') && (s[i+1] == '.') && (s[i+2] == '/'))
+			memmove(s+i, s+i+2, len-i-1), len-=2;
+		else
+			i++;
+
+	// Remove ..'s
+	i = len-1;
+	while (i >= 3)
+		if ((s[i]=='/') && (s[i-1]=='.') && (s[i-2]=='.') && (s[i-3]=='/')) {
+			uint16_t end = i;
+			i -= 3;
+			do; while (i && (s[--i] != '/'));
+			memmove(s+i, s+end, len-end+1);
+			len -= end-i;
+		} else
+			i--;
+
+	*aname = realloc(*aname, len+1);
 }
 
 void
@@ -262,15 +309,16 @@ rlock(pthread_rwlock_t *lock, char *s)
 uint64_t
 getqid(struct stat *buf, uint8_t type)
 {
-	rlock(&QIDLOCK, "QIDLOCK getqid start");
 	uint64_t qid = matchqid(buf);
 	if (qid == QIDC) {
 		rwunlock(&QIDLOCK, "QIDLOCK getqid start");
 		wlock(&QIDLOCK, "QIDLOCK getqid no match");
 		if ((qid = matchqid(buf)) == QIDC) {
-			if (!(QIDC & (QIDC-1)) &&  // power of two (at capacity)
-					!((QIDS=realloc(QIDS, QIDC ? (QIDC << 1) : 1))))
-				die("sd9p: realloc qids (%d): %s", QIDC?(QIDC<<1):1, strerr(errno));
+			if (!(QIDC & (QIDC-1))) { // power of two (at capacity)
+				size_t capacity = (QIDC ? (QIDC<<1) : 1) * sizeof(struct qid);
+				if (!((QIDS = realloc(QIDS, capacity))))
+					die("sd9p: realloc qids (%zu): %s", capacity, strerr(errno));
+			}
 			QIDC++;
 			QIDS[qid].st_dev = buf->st_dev;
 			QIDS[qid].st_ino = buf->st_ino;
@@ -296,6 +344,15 @@ wqid(char *buf, uint64_t qid)
 	rwunlock(&QIDLOCK, "QIDLOCK wqid");
 }
 
+void
+saystrerr(char *buf, char *s, int errnum)
+{
+	char errs[128];
+	if (strerror_r(errnum, errs, sizeof(errs)))
+		snprintf(errs, sizeof(errs), "errnum %d (long error message)", errnum);
+	sayerr(buf, "%s: %s", s, errs);
+}
+
 void*
 worker(void *info_)
 {
@@ -313,17 +370,18 @@ worker(void *info_)
 		MSGBUF = msgbuf, msgbuf = tmp;
 		info->alert = NONE;
 		info->tag = le2uint(msgbuf+5, 2);
+		lock(&info->alertlock, "alertlock start");
 		if (sem_post(&MSGGOT))
 			die("sd9p: sem_post MSGGOT: %s", strerr(errno));
 
 		if (le2uint(msgbuf+5, 2) == NOTAG) {
 			sayerr(msgbuf, "NOTAG can only be used for version messages");
-			continue;
+			goto END;
 		}
 
 		switch (msgbuf[4]) {
 		case TAUTH: {
-			if (ARGC < 2) {
+			if (ARGC < 3) {
 				sayerr(msgbuf, "no authorization needed");
 				goto END;
 			}
@@ -331,9 +389,10 @@ worker(void *info_)
 			char *uname, *aname;
 			if (parsemsg(msgbuf, "4ss", &afid, &uname, &aname))
 				goto END;
+			cleananame(&aname);
 			if (afid == NOFID) {
 				sayerr(msgbuf, "can't use NOFID as a normal fid");
-				goto END;
+				goto AUTHFREE;
 			}
 			wlock(&FIDLOCK, "FIDLOCK auth");
 			int fidi = getfidi(afid);
@@ -343,6 +402,9 @@ worker(void *info_)
 				sayerr(msgbuf, "fid %d already in use", afid);
 			else {
 				FIDS[fidi].fid = afid;
+				FIDS[fidi].info.auth.uname = uname;
+				FIDS[fidi].info.auth.aname = aname;
+				uname = aname = NULL;
 				int fds[4];
 				if (pipe(fds) || pipe(fds+2))
 					die("sd9p: pipe: %s", strerr(errno));
@@ -358,7 +420,7 @@ worker(void *info_)
 				if (!FIDS[fidi].info.auth.pidstatus) {
 					if ((dup2(fds[1],1)==-1) || (dup2(fds[2],0)==-1))
 						die("sd9p: dup2: %s", strerror(errno));
-					if (execvp(ARGV[1], ARGV+1) == -1)
+					if (execvp(ARGV[2], ARGV+2) == -1)
 						die("sd9p: execvp: %s", strerror(errno));
 				}
 				if (close(fds[1]) || close(fds[2]))
@@ -372,6 +434,106 @@ worker(void *info_)
 				say(TAUTH+1, msgbuf, 13);
 			}
 			rwunlock(&FIDLOCK, "FIDLOCK auth");
+AUTHFREE:
+			free(uname), free(aname);
+			break;
+
+		} case TATTACH: {
+			uint32_t fid, afid;
+			char *uname, *aname;
+			int fd = -1;
+			if (parsemsg(msgbuf, "44ss", &fid, &afid, &uname, &aname))
+				goto ATTACHFREE;
+			cleananame(&aname);
+			if (ARGC > 2) {
+				if (afid == NOFID) {
+					sayerr(msgbuf, "authentication required");
+					goto ATTACHFREE;
+				}
+				int err=0;
+				wlock(&FIDLOCK, "FIDLOCK attach afid check");
+				int fidi = getfidi(afid);
+				rlock(&QIDLOCK, "QIDLOCK attach afid check");
+				if ((fidi == MAXFIDS) || (FIDS[fidi].fid == NOFID))
+					err=1, sayerr(msgbuf, "afid not found");
+				else if (!(QIDS[FIDS[fidi].qid].type & QTAUTH))
+					err=1, sayerr(msgbuf, "afid not open for authentication");
+				else if (strcmp(uname, FIDS[fidi].info.auth.uname))
+					err=1, sayerr(msgbuf, "uname doesn't match afid's uname");
+				else if (strcmp(aname, FIDS[fidi].info.auth.aname))
+					err=1, sayerr(msgbuf, "aname doesn't match afid's aname");
+				else if (FIDS[fidi].info.auth.pidstatus) {
+					if (FIDS[fidi].info.auth.pidstatus > 1) {
+						pid_t pid = FIDS[fidi].info.auth.pidstatus;
+						int statloc;
+						if (((res = waitpid(pid, &statloc, WNOHANG))) == -1)
+							die("sd9p: waitpid %ld attach: %s", pid, strerr(errno));
+						if (res && WIFEXITED(statloc))
+							FIDS[fidi].info.auth.pidstatus = !!WEXITSTATUS(statloc);
+						else if (res && WIFSIGNALED(statloc))
+							FIDS[fidi].info.auth.pidstatus = 1;
+					}
+					if (FIDS[fidi].info.auth.pidstatus > 1)
+						err=1, sayerr(msgbuf, "authentication incomplete");
+					else if (FIDS[fidi].info.auth.pidstatus)
+						err=1, sayerr(msgbuf, "authentication unsuccessful");
+				}
+				rwunlock(&QIDLOCK, "QIDLOCK attach afid check");
+				rwunlock(&FIDLOCK, "FIDLOCK attach afid check");
+				if (err)
+					goto ATTACHFREE;
+			}
+			if (!((aname = realloc(aname, strlen(aname)+strlen(ARGV[1])+1))))
+				die("sd9p: realloc aname: %s", strerr(errno));
+			memmove(aname+strlen(ARGV[1]), aname, strlen(aname)+1);
+			memcpy(aname, ARGV[1], strlen(ARGV[1]));
+			unlock(&info->alertlock, "alertlock attach open");
+			fd = open(aname, O_DIRECTORY|O_CLOEXEC|O_SEARCH);
+			lock(&info->alertlock, "alertlock attach open");
+			if (info->alert != NONE)
+				goto ATTACHFREE;
+			if (fd == -1) {
+				if (errno == EACCES)
+					sayerr(msgbuf, "authenticated, but permission denied");
+				else if ((errno == ENOENT) || (errno == ENOTDIR))
+					sayerr(msgbuf, "aname directory does not exist");
+				else
+					saystrerr(msgbuf, "open", errno);
+				goto ATTACHFREE;
+			}
+			unlock(&info->alertlock, "alertlock attach fstat");
+			struct stat buf;
+			res = fstat(fd, &buf);
+			lock(&info->alertlock, "alertlock attach fstat");
+			if (info->alert != NONE)
+				goto ATTACHFREE;
+			if (res == -1) {
+				saystrerr(msgbuf, "stat", errno);
+				goto ATTACHFREE;
+			}
+			wlock(&FIDLOCK, "FIDLOCK attach entry");
+			int fidi = getfidi(fid);
+			if (fidi == MAXFIDS)
+				sayerr(msgbuf, "maximum fids reached (%d)", MAXFIDS);
+			else if (FIDS[fidi].fid != NOFID)
+				sayerr(msgbuf, "fid %d already in use", fid);
+			else {
+				FIDS[fidi].fid = fid;
+				FIDS[fidi].qid = getqid(&buf, 0);
+				FIDS[fidi].info.f.fd = fd;
+				fd = -1;
+				FIDS[fidi].info.f.pfd = 0;
+				FIDS[fidi].info.f.offset = 0;
+				FIDS[fidi].info.f.name = NULL;
+				FIDS[fidi].info.f.dirent = NULL;
+				wqid(msgbuf+7, FIDS[fidi].qid);
+				say(TATTACH+1, msgbuf, 13);
+			}
+			rwunlock(&FIDLOCK, "FIDLOCK attach entry");
+ATTACHFREE:
+			free(aname), free(uname);
+			if (fd != -1)
+				close(fd);
 			break;
 
 		} default:
@@ -381,15 +543,14 @@ worker(void *info_)
 
 END:
 		rlock(&TAGLOCK, "TAGLOCK end");
-		lock(&info->alertlock, "alert end");
-		if (info->alert == FLUSH) {
+		if (info->alert == FLUSH) {  // alertlock should be held
 			uint2le(msgbuf+5, 2, info->tag);
 			say(TFLUSH+1, msgbuf, 0);
 			info->alert = NONE;
 		}
 		info->tag = NOTAG;
-		unlock(&info->alertlock, "alert end");
 		rwunlock(&TAGLOCK, "TAGLOCK end");
+		unlock(&info->alertlock, "alert end");
 	}
 }
 
@@ -398,9 +559,9 @@ get(char *dest, size_t len, char *buf)
 {
 	size_t r = fread(dest, 1, len, stdin);
 	if (ferror(stdin)) {
-		char *err = strerr(errno);
+		int errnum = errno;
 		sayerr(buf, "error reading input");
-		die("sd9p: fread: %s", err);
+		die("sd9p: fread: %s", strerr(errnum));
 	}
 	if (r < len) {
 		if (r || (buf != dest))  // Ended in middle of a message
@@ -409,12 +570,23 @@ get(char *dest, size_t len, char *buf)
 	}
 }
 
+void
+waitpidordie(pid_t pid, int *statloc)
+{
+	int res;
+	do res=waitpid(pid, statloc, 0); while ((res == -1) && (errno == EINTR));
+	if (res == -1)
+		die("sd9p: waitpid %ld: %s", pid, strerr(errno));
+}
+
 int
 main(int argc, char **argv)
 {
 	setbuf(stdout, NULL);
 	if (signal(SIGUSR1, sigusr1) == SIG_ERR)
 		die("sd9p: signal: %s", strerror(errno));
+	if (argc < 2)
+		die("usage: sd9p dir [authcmd [arg ...]]");
 	ARGC = argc, ARGV = argv;
 
 	// Initialize global variables
@@ -461,7 +633,7 @@ main(int argc, char **argv)
 		if (!MSGLEN && (msglen > MINLEN)) {  // First message & longer than default
 			if (!(MSGBUF = realloc(MSGBUF, msglen)))
 				die("sd9p: realloc: %s", strerr(errno));
-			MSGBUF[5]=MSGBUF[6]=0xFF, get(MSGBUF+4, msglen-4, MSGBUF);
+			get(MSGBUF+4, msglen-4, MSGBUF);
 		} else if (MSGLEN && (msglen > MSGLEN)) {  // Message too long
 			get(MSGBUF+4, 3, MSGBUF);
 			sayerr(MSGBUF, "message length %u > %u", msglen, MSGLEN);
@@ -479,28 +651,28 @@ main(int argc, char **argv)
 
 		// Handle version messages
 		if (MSGBUF[4] == TVERSION) {
-			if ((msglen < 7+6) || (msglen < 7+6+le2uint(MSGBUF+7+4, 2))) {
-				sayerr(MSGBUF, "partial version message");
+			uint32_t newmsglen;
+			char *version;
+			if (parsemsg(MSGBUF, "4s", &newmsglen, &version))
 				continue;
-			}
-			uint16_t vlen = le2uint(MSGBUF+7+4, 2);
-			if ((vlen < 6) || strncmp(MSGBUF+7+6, "9P2000", 6) ||
-					((vlen > 6) && (MSGBUF[7+6+6] != '.'))) {
-				strncpy(MSGBUF+7+6, "unknown", 7);
+			res = strncmp(version,"9P2000",6) || (version[6] && (version[6] != '.'));
+			free(version);
+			if (res) {
 				uint2le(MSGBUF+7+4, 2, 7);
+				strncpy(MSGBUF+7+6, "unknown", 7);
 				say(TVERSION+1, MSGBUF, 4+2+7);
 				continue;
 			}
-			if (le2uint(MSGBUF+7, 4) < MINLEN) {
+			if (newmsglen < MINLEN) {
 				sayerr(MSGBUF, "message size too small");
 				continue;
 			}
-			if (!(MSGBUF = realloc(MSGBUF, MSGLEN=le2uint(MSGBUF+7, 4))))
+			if (!((MSGBUF = realloc(MSGBUF, MSGLEN=newmsglen))))
 				die("sd9p: realloc: %s", strerr(errno));
 			for (int i=0; i<THREADC; i++) {
-				lock(&threads[i].alertlock, "alert in worker");
+				lock(&threads[i].alertlock, "alert abort");
 				threads[i].alert = ABORT;
-				unlock(&threads[i].alertlock, "alert in worker");
+				unlock(&threads[i].alertlock, "alert abort");
 				if ((res=pthread_kill(threads[i].id, SIGUSR1)))
 					die("sd9p: pthread_kill %d: %s", i, strerr(res));
 			}
@@ -510,37 +682,57 @@ main(int argc, char **argv)
 				if (FIDS[i].fid == NOFID)
 					continue;
 				if (QIDS[FIDS[i].qid].type & QTAUTH) {
+					free(FIDS[i].info.auth.uname), free(FIDS[i].info.auth.aname);
 					if (close(FIDS[i].info.auth.w) || close(FIDS[i].info.auth.r))
 						die("sd9p: close auth fds: %s", strerr(errno));
 					if (FIDS[i].info.auth.pidstatus > 1) {
-						if (kill(FIDS[i].info.auth.pidstatus, SIGTERM))
-							die("sd9p: kill %ld: %s", FIDS[i].info.auth.pidstatus,
-								strerr(errno));
+						pid_t pid = FIDS[i].info.auth.pidstatus;
+						if (kill(pid, SIGTERM))
+							die("sd9p: kill %ld SIGTERM: %s", pid, strerr(errno));
+						int statloc;
+						waitpidordie(pid, &statloc);
+						if (!WIFEXITED(statloc) && !WIFSIGNALED(statloc)) {
+							if (kill(pid, SIGKILL))
+								die("sd9p: kill %ld SIGKILL: %s", pid, strerr(errno));
+							waitpidordie(pid, &statloc);
+						}
+					}
+				} else {
+					if (FIDS[i].info.f.fd)
+						close(FIDS[i].info.f.fd);
+					if (FIDS[i].info.f.pfd)
+						close(FIDS[i].info.f.pfd);
+					free(FIDS[i].info.f.name), free(FIDS[i].info.f.dirent);
+				}
+				FIDS[i].fid = NOFID;
+			}
+			rwunlock(&QIDLOCK, "QIDLOCK fid reset");
+			rwunlock(&FIDLOCK, "FIDLOCK reset");
 			uint2le(MSGBUF+7+4, 2, 6);
 			say(TVERSION+1, MSGBUF, 4+2+6);
 
 		// Handle flush message
 		} else if (MSGBUF[4] == TFLUSH) {
-			uint16_t tag = le2uint(MSGBUF+5, 2);
-			if (tag == NOTAG) {
+			uint16_t tag;
+			if ((msglen < 9) || ((tag=le2uint(MSGBUF+7,2)) == NOTAG)) {
 				say(TFLUSH+1, MSGBUF, 0);
 				continue;
 			}
 			int found = 0;
 			wlock(&TAGLOCK, "TAGLOCK send flush");
-			if (!found)
-				say(TFLUSH+1, MSGBUF, 0);
 			for (int i=0; i<THREADC; i++)
 				if (threads[i].tag == tag) {
 					found=1;
-					lock(&threads[i].alertlock, "alert flush to worker");
+					lock(&threads[i].alertlock, "alert flush");
 					threads[i].alert = FLUSH;
 					threads[i].tag = tag;
-					unlock(&threads[i].alertlock, "alert flush to worker");
+					unlock(&threads[i].alertlock, "alert flush");
 					if ((res=pthread_kill(threads[i].id, SIGUSR1)))
 						die("sd9p: pthread_kill %d: %s", i, strerr(res));
 					break;
 				}
+			if (!found)
+				say(TFLUSH+1, MSGBUF, 0);
 			rwunlock(&TAGLOCK, "TAGLOCK send flush");
 
 		// Pass on to a worker

@@ -1,0 +1,43 @@
+5d4
+< #include <semaphore.h>
+14a14,15
+> #include <dispatch/dispatch.h>
+> 
+78c79
+< sem_t MSGNEW, MSGGOT;
+---
+> dispatch_semaphore_t  MSGNEW, MSGGOT;
+364,366c365
+< 		do; while (((res=sem_wait(&MSGNEW))) && (errno==EINTR));
+< 		if (res)
+< 			die("sd9p: sem_wait MSGNEW: %s", strerr(errno));
+---
+> 		dispatch_semaphore_wait(MSGNEW, DISPATCH_TIME_FOREVER);
+374,375c373
+< 		if (sem_post(&MSGGOT))
+< 			die("sd9p: sem_post MSGGOT: %s", strerr(errno));
+---
+> 		dispatch_semaphore_signal(MSGGOT);
+491c489
+< 			fd = open(aname, O_DIRECTORY|O_CLOEXEC|O_SEARCH);
+---
+> 			fd = open(aname, O_DIRECTORY|O_CLOEXEC|O_RDONLY);
+596,599c594,597
+< 	if (sem_init(&MSGNEW, 0, 0))
+< 		die("sd9p: sem_init MSGNEW: %s", strerror(errno));
+< 	if (sem_init(&MSGGOT, 0, 0))
+< 		die("sd9p: sem_init MSGGOT: %s", strerror(errno));
+---
+> 	if (!((MSGNEW=dispatch_semaphore_create(0))))
+> 		die("sd9p: dispatch_semaphore_create MSGNEW: not enough memory");
+> 	if (!((MSGGOT=dispatch_semaphore_create(0))))
+> 		die("sd9p: dispatch_semaphore_create MSGGOT: not enough memory");
+737,741c735,736
+< 			if (sem_post(&MSGNEW))
+< 				die("sd9p: sem_post MSGNEW: %s", strerr(errno));
+< 			do; while (((res=sem_wait(&MSGGOT))) && (errno==EINTR));
+< 			if (res)
+< 				die("sd9p: sem_wait MSGGOT: %s", strerr(errno));
+---
+> 			dispatch_semaphore_signal(MSGNEW);
+> 			dispatch_semaphore_wait(MSGGOT, DISPATCH_TIME_FOREVER);

@@ -1,6 +1,7 @@
 qid:{dev,ino,type,v}
 {fid,q
-	auth:{pidstatus,r,w}}
+	auth:{pidstatus,r,w,uname,aname}
+	:{fd,pfd,ofs,dirent,name}}
 MLEN=0,BUF,NEW,GOT,WLK,TAGLK
 FS[MXF],FLK,QS,QC=0,QLK
 
@@ -45,12 +46,14 @@ if len!=LEN:free,malloc,len=LEN
 swap BUF,buf
 t.msg=NONE
 memcpy(t.tag,buf+5,2)
+lk alert
 post GOT
 if tag=NOTAG:err
 switch type:
 case auth:
-	afid[4] uname[s] aname[s]
 	if no args+1: err,END
+	afid[4] uname[s] aname[s]
+	clean aname
 	.w FLK
 	i0..MXF: NOFID,break
 	i=MXF?err:
@@ -58,13 +61,37 @@ case auth:
 		update FC entry
 		say Rauth qid
 	w FLK.
+case attach:
+	fid[4] afid[4] uname[s] aname[s]
+	clean aname
+	args:
+		afid=NOFID:err,AFREE
+		.w FLK
+		afid?err;uname?err;aname?err
+		w FLK.;err=>END
+	path=argv1+aname
+	unlk{open}
+	flushabort: goto AFREE
+	err: say it, goto AFREE
+	unlk{fstat}
+	flushabort: goto AFREE
+	err: say it, goto AFREE
+	.w FLK
+	fid?err
+	set fid stuff
+	w FLK.
+	AFREE: free aname,uname,path
+case walk:
+	fid[4] newfid[4] nwname[2]
+	check nwname<=16 & all good
 default:
 	sayerr
 END:
 .r TAGLOCK
-lk{msg==FLUSH?say flush,=NONE}
+msg==FLUSH?say flush,=NONE
 tag=NOTAG
 r TAGLOCK.
+unlk alert
 
 SIGPIPE?
-CHECK FOR ABORT!
+VERSION PARENT DIRECTORY?
