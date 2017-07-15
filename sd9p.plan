@@ -1,7 +1,8 @@
 qid:{dev,ino,type,v}
-{fid,q
+anode:{name,parent,fd,refs,lk}
+{fid,q,ofs
 	auth:{pidstatus,r,w,uname,aname}
-	:{fd,pfd,ofs,dirent,name}}
+	:{fd,dir,dirlk,dirent,name}}
 MLEN=0,BUF,NEW,GOT,WLK,TAGLK
 FS[MXF],FLK,QS,QC=0,QLK
 
@@ -82,8 +83,23 @@ case attach:
 	w FLK.
 	AFREE: free aname,uname,path
 case walk:
+	pfd=-1, nwnames*=null
 	fid[4] newfid[4] nwname[2]
-	check nwname<=16 & all good
+	check nwname<=16
+	calloc nwnames
+	0..nwname-:
+		len,relpath,no !end /,parses
+	err=0 .r FLK
+	fid: fd-? dir|0?
+	qid, aqid, dup p?fd, name
+	r FLK. err=>WFREE
+	0..nwname-:  //open that f's pfd
+		unlk{tmp,pfd=oat(pfd,name)}
+		name=nwname[i]
+		unlk{fstatat(pfd,name)}
+		wqid
+	.. at root!!!
+	WFREE: pfd,if nwnames:loop,free
 default:
 	sayerr
 END:
@@ -95,3 +111,10 @@ unlk alert
 
 SIGPIPE?
 VERSION PARENT DIRECTORY?
+CLOSE HANGING? (async close?)
+
+EWONTFIX:
+close,open,write
+open, (mv), ..
+fid1,fid2,rename fid1, open fid2
+bad st_{dev,ino}

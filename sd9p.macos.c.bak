@@ -1,0 +1,298 @@
+#include <errno.h>
+#include <pthread.h>
+#include <signal.h>
+#include <stdarg.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include <dispatch/dispatch.h>
+
+
+enum alert { NONE, FLUSH, ABORT };
+struct worker {
+	pthread_t id;
+	enum alert alert;
+	pthread_mutex_t alertlock;
+	uint16_t tag;
+};
+
+
+const int THREADC = 32;
+const int MINLEN = 256;
+const uint8_t TVERSION = 100;
+const uint8_t TAUTH = 102;
+const uint8_t TATTACH = 104;
+const uint8_t TFLUSH = 108;
+const uint8_t TWALK = 110;
+const uint8_t TOPEN = 112;
+const uint8_t TCREATE = 114;
+const uint8_t TREAD = 116;
+const uint8_t TWRITE = 118;
+const uint8_t TCLUNK = 120;
+const uint8_t TREMOVE = 122;
+const uint8_t TSTAT = 124;
+const uint8_t TWSTAT = 126;
+const uint16_t NOTAG = ~0;
+unsigned int MSGLEN = 0;
+char *MSGBUF;
+dispatch_semaphore_t  MSGNEW, MSGGOT;
+pthread_mutex_t WLOCK, STRERR;
+pthread_rwlock_t TAGLOCK;  // 'reader' = worker writing, 'writer' = main reading
+
+
+void
+sigusr1(int sig)
+{  // This function intentionally left blank
+}
+
+void 
+die(char *errfmt, ...)
+{
+	va_list argp;
+	va_start(argp, errfmt);
+	vfprintf(stderr, errfmt, argp);
+	va_end(argp);
+	fputc('\n', stderr);
+	exit(EXIT_FAILURE);
+}
+
+void
+uint2le(char *buf, int len, unsigned int d)
+{
+	for (int i=0; i<len; i++)
+		buf[i] = d >> 8*i;
+}
+
+char*
+strerr(int errnum)
+{
+	if (pthread_mutex_lock(&STRERR))  // assuming about to die
+		die("sd9p: pthread_mutex_lock STRERR: errno %d after %d", errno, errnum);
+	return strerror(errnum);
+}
+
+void
+say(char type, char *buf, size_t bodylen)
+{
+	uint2le(buf, 4, bodylen+7);
+	buf[4] = type;
+	if (pthread_mutex_lock(&WLOCK))
+		die("sd9p: pthread_mutex_lock write lock: %s", strerr(errno));
+	size_t w = fwrite(buf, 1, bodylen+7, stdout);
+	if (ferror(stdout))
+		die("sd9p: fwrite: %s", strerr(errno));
+	if (w < bodylen+7)
+		exit(EXIT_SUCCESS);
+	if (pthread_mutex_unlock(&WLOCK))
+		die("sd9p: pthread_mutex_unlock write lock: %s", strerr(errno));
+}
+
+unsigned int
+le2uint(char *buf, int len)
+{
+	unsigned int d = 0;
+	for (int i=0; i<len; i++)
+		d += buf[i] << 8*i;
+	return d;
+}
+
+void
+sayerr(char *buf, char *errfmt, ...)
+{
+	va_list argp;
+	va_start(argp, errfmt);
+	vsnprintf(buf+9, MINLEN-9, errfmt, argp);
+	va_end(argp);
+	size_t len = strlen(buf+9);
+	uint2le(buf+7, 2, len);
+	say(107, buf, len+2);
+}
+
+void*
+worker(void *info_)
+{
+	struct worker *info = info_;
+	unsigned int len = 0;
+	char *msgbuf = NULL;
+	while (1) {
+		int res;
+		dispatch_semaphore_wait(MSGNEW, DISPATCH_TIME_FOREVER);
+		if ((len != MSGLEN) && !((free(msgbuf),msgbuf=malloc((len=MSGLEN)))))
+			die("sd9p: malloc msgbuf: %s", strerr(errno));
+		char *tmp = MSGBUF;
+		MSGBUF = msgbuf, msgbuf = tmp;
+		info->alert = NONE;
+		info->tag = le2uint(msgbuf+5, 2);
+		dispatch_semaphore_signal(MSGGOT);
+
+		if (le2uint(msgbuf+5, 2) == NOTAG) {
+			sayerr(msgbuf, "NOTAG can only be used for version messages");
+			continue;
+		}
+
+		sayerr(msgbuf, "unknown message type %d", msgbuf[4]);
+
+		if ((res=pthread_rwlock_rdlock(&TAGLOCK)))
+			die("sd9p: pthread_rwlock_rdlock TAGLOCK end: %s", strerr(res));
+		if ((res=pthread_mutex_lock(&info->alertlock)))
+			die("sd9p: pthread_mutex_lock alert end: %s", strerr(res));
+		if (info->alert == FLUSH) {
+			uint2le(msgbuf+5, 2, info->tag);
+			say(TFLUSH+1, msgbuf, 0);
+			info->alert = NONE;
+		}
+		info->tag = NOTAG;
+		if ((res=pthread_mutex_unlock(&info->alertlock)))
+			die("sd9p: pthread_mutex_unlock alert end: %s", strerr(res));
+		if ((res=pthread_rwlock_unlock(&TAGLOCK)))
+			die("sd9p: pthread_rwlock_unlock TAGLOCK end: %s", strerr(res));
+	}
+}
+
+void
+get(char *dest, size_t len, char *buf)
+{
+	size_t r = fread(dest, 1, len, stdin);
+	if (ferror(stdin)) {
+		char *err = strerr(errno);
+		sayerr(buf, "error reading input");
+		die("sd9p: fread: %s", err);
+	}
+	if (r < len) {
+		if (r || (buf != dest))  // Ended in middle of a message
+			sayerr(buf, "short read - expected at least %d, got %d", len, r);
+		exit(EXIT_SUCCESS);
+	}
+}
+
+int
+main(int argc, char **argv)
+{
+	setbuf(stdout, NULL);
+	if (signal(SIGUSR1, sigusr1) == SIG_ERR)
+		die("sd9p: signal: %s", strerror(errno));
+
+	// Initialize global buffer and locks
+	MSGBUF = malloc(MINLEN);
+	if (!MSGBUF)
+		die("sd9p: malloc first %d (?!) bytes: %s", MINLEN, strerror(errno));
+	if (!((MSGNEW=dispatch_semaphore_create(0))))
+		die("sd9p: dispatch_semaphore_create MSGNEW: not enough memory");
+	if (!((MSGGOT=dispatch_semaphore_create(0))))
+		die("sd9p: dispatch_semaphore_create MSGGOT: not enough memory");
+	int res = pthread_mutex_init(&WLOCK, NULL);
+	if (res)
+		die("sd9p: pthread_mutex_init WLOCK: %s", strerror(res));
+	if ((res=pthread_mutex_init(&STRERR, NULL)))
+		die("sd9p: pthread_mutex_init STRERR: %s", strerror(res));
+	if ((res=pthread_rwlock_init(&TAGLOCK, NULL)))
+		die("sd9p: pthread_rwlock_init: %s", strerror(res));
+
+	// Create worker threads
+	struct worker threads[THREADC];
+	for (int i=0; i<THREADC; i++) {
+		threads[i].alert = NONE;
+		if ((res=pthread_mutex_init(&threads[i].alertlock, NULL)))
+			die("sd9p: pthread_mutex_init thread %d: %s", i, strerr(res));
+		threads[i].tag = NOTAG;
+		if ((res=pthread_create(&threads[i].id, NULL, worker, &threads[i])))
+			die("sd9p: pthread_create %d: %s", i, strerr(res));
+	}
+
+	while (!feof(stdin)) {
+		// Read in message
+		MSGBUF[5]=MSGBUF[6]=0xFF, get(MSGBUF, 4, MSGBUF);
+		unsigned int msglen = le2uint(MSGBUF, 4);
+		if (msglen < 7) {
+			sayerr(MSGBUF, "stub message (shorter than 7 bytes? wtf?)");
+			continue;
+		}
+		if (!MSGLEN && (msglen > MINLEN)) {  // First message & longer than default
+			if (!(MSGBUF = realloc(MSGBUF, msglen)))
+				die("sd9p: realloc: %s", strerr(errno));
+			MSGBUF[5]=MSGBUF[6]=0xFF, get(MSGBUF+4, msglen-4, MSGBUF);
+		} else if (MSGLEN && (msglen > MSGLEN)) {  // Message too long
+			get(MSGBUF+4, 3, MSGBUF);
+			sayerr(MSGBUF, "message length %u > %u", msglen, MSGLEN);
+			do get(MSGBUF+7,MSGLEN-7,MSGBUF); while ((msglen-=(MSGLEN-7))-7 > MSGLEN);
+			get(MSGBUF+7, msglen-7, MSGBUF);
+			continue;
+		} else  // Message fits
+			get(MSGBUF+4, msglen-4, MSGBUF);
+
+		// First message must be version message
+		if (!MSGLEN && (MSGBUF[4] != TVERSION)) {
+			sayerr(MSGBUF, "version message required");
+			continue;
+		}
+
+		// Handle version messages
+		if (MSGBUF[4] == TVERSION) {
+			if ((msglen < 7+6) || (msglen < 7+6+le2uint(MSGBUF+7+4, 2))) {
+				sayerr(MSGBUF, "partial version message");
+				continue;
+			}
+			unsigned int vlen = le2uint(MSGBUF+7+4, 2);
+			if ((vlen < 6) || strncmp(MSGBUF+7+6, "9P2000", 6) ||
+					((vlen > 6) && (MSGBUF[7+6+6] != '.'))) {
+				strncpy(MSGBUF+7+6, "unknown", 7);
+				uint2le(MSGBUF+7+4, 2, 7);
+				say(TVERSION+1, MSGBUF, 4+2+7);
+				continue;
+			}
+			if (le2uint(MSGBUF+7, 4) < MINLEN) {
+				sayerr(MSGBUF, "message size too small");
+				continue;
+			}
+			if (!(MSGBUF = realloc(MSGBUF, MSGLEN=le2uint(MSGBUF+7, 4))))
+				die("sd9p: realloc: %s", strerr(errno));
+			for (int i=0; i<THREADC; i++) {
+				if ((res=pthread_mutex_lock(&threads[i].alertlock)))
+					die("sd9p: pthread_mutex_lock alert %d: %s", i, strerr(res));
+				threads[i].alert = ABORT;
+				if ((res=pthread_mutex_unlock(&threads[i].alertlock)))
+					die("sd9p: pthread_mutex_unlock alert %d: %s", i, strerr(res));
+				if ((res=pthread_kill(threads[i].id, SIGUSR1)))
+					die("sd9p: pthread_kill %d: %s", i, strerr(res));
+			}
+			uint2le(MSGBUF+7+4, 2, 6);
+			say(TVERSION+1, MSGBUF, 4+2+6);
+
+		// Handle flush message
+		} else if (MSGBUF[4] == TFLUSH) {
+			uint16_t tag = le2uint(MSGBUF+5, 2);
+			if (tag == NOTAG) {
+				say(TFLUSH+1, MSGBUF, 0);
+				continue;
+			}
+			int found = 0;
+			if ((res=pthread_rwlock_wrlock(&TAGLOCK)))
+				die("sd9p: pthread_rwlock_wrlock TAGLOCK: %s", strerr(res));
+			if (!found)
+				say(TFLUSH+1, MSGBUF, 0);
+			for (int i=0; i<THREADC; i++)
+				if (threads[i].tag == tag) {
+					found=1;
+					if ((res=pthread_mutex_lock(&threads[i].alertlock)))
+						die("sd9p: pthread_mutex_lock alert %d: %s", i, strerr(res));
+					threads[i].alert = FLUSH;
+					threads[i].tag = tag;
+					if ((res=pthread_mutex_unlock(&threads[i].alertlock)))
+						die("sd9p: pthread_mutex_unlock alert %d: %s", i, strerr(res));
+					if ((res=pthread_kill(threads[i].id, SIGUSR1)))
+						die("sd9p: pthread_kill %d: %s", i, strerr(res));
+					break;
+				}
+			if ((res=pthread_rwlock_unlock(&TAGLOCK)))
+				die("sd9p: pthread_rwlock_unlock write TAGLOCK: %s", strerr(res));
+
+		// Pass on to a worker
+		} else {
+			dispatch_semaphore_signal(MSGNEW);
+			dispatch_semaphore_wait(MSGGOT, DISPATCH_TIME_FOREVER);
+		}
+
+	}
+}

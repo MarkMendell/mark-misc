@@ -2,7 +2,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
-#include <semaphore.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -12,10 +11,12 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <dispatch/dispatch.h>
 
-const int THREADC = 16;
+
+const int THREADC = 32;
 const int MAXFIDS = 64;
-const int MINLEN = 256;  // >= 237 (largest rwalk message)
+const int MINLEN = 256;
 const uint8_t TVERSION = 100;
 const uint8_t TAUTH = 102;
 const uint8_t TATTACH = 104;
@@ -43,21 +44,14 @@ struct worker {
 	pthread_mutex_t alertlock;
 	uint16_t tag;
 };
-struct anode {
-	char *name;
-	struct anode *parent;
-	int fd;
-	unsigned int refs;
-	pthread_rwlock_t lock;
-};
 struct auth {
 	pid_t pidstatus;  // 0/1 is exit status, otherwise pid
 	int r, w;
 	char *uname, *aname;
 };
 struct file {
-	int fd;
-	struct anode *pdir, *dir;
+	int fd, pfd;
+	uint64_t offset;
 	char *name;
 	char *dirent;
 };
@@ -68,8 +62,7 @@ union info {
 struct finfo {
 	uint32_t fid;
 	uint64_t qid;
-	uint64_t offset;
-	union info i;
+	union info info;
 };
 struct qid {
 	dev_t st_dev;
@@ -83,7 +76,7 @@ int ARGC;
 char **ARGV;
 uint32_t MSGLEN = 0;
 char *MSGBUF;
-sem_t MSGNEW, MSGGOT;
+dispatch_semaphore_t  MSGNEW, MSGGOT;
 pthread_mutex_t WLOCK, STRERR;
 pthread_rwlock_t TAGLOCK;  // 'reader' = worker writing, 'writer' = main reading
 struct finfo FIDS[MAXFIDS];
@@ -119,9 +112,8 @@ uint2le(char *buf, int len, uint64_t d)
 char*
 strerr(int errnum)
 {
-	int res = pthread_mutex_lock(&STRERR);  // assuming about to die
-	if (res)
-		die("sd9p: pthread_mutex_lock STRERR: errnum %d after %d", res, errnum);
+	if (pthread_mutex_lock(&STRERR))  // assuming about to die
+		die("sd9p: pthread_mutex_lock STRERR: errno %d after %d", errno, errnum);
 	return strerror(errnum);
 }
 
@@ -370,9 +362,7 @@ worker(void *info_)
 	char *msgbuf = NULL;
 	while (1) {
 		int res;
-		do; while (((res=sem_wait(&MSGNEW))) && (errno==EINTR));
-		if (res)
-			die("sd9p: sem_wait MSGNEW: %s", strerr(errno));
+		dispatch_semaphore_wait(MSGNEW, DISPATCH_TIME_FOREVER);
 		if ((len != MSGLEN) && !((free(msgbuf),msgbuf=malloc((len=MSGLEN)))))
 			die("sd9p: malloc msgbuf: %s", strerr(errno));
 		char *tmp = MSGBUF;
@@ -380,8 +370,7 @@ worker(void *info_)
 		info->alert = NONE;
 		info->tag = le2uint(msgbuf+5, 2);
 		lock(&info->alertlock, "alertlock start");
-		if (sem_post(&MSGGOT))
-			die("sd9p: sem_post MSGGOT: %s", strerr(errno));
+		dispatch_semaphore_signal(MSGGOT);
 
 		if (le2uint(msgbuf+5, 2) == NOTAG) {
 			sayerr(msgbuf, "NOTAG can only be used for version messages");
@@ -411,8 +400,8 @@ worker(void *info_)
 				sayerr(msgbuf, "fid %d already in use", afid);
 			else {
 				FIDS[fidi].fid = afid;
-				FIDS[fidi].i.auth.uname = uname;
-				FIDS[fidi].i.auth.aname = aname;
+				FIDS[fidi].info.auth.uname = uname;
+				FIDS[fidi].info.auth.aname = aname;
 				uname = aname = NULL;
 				int fds[4];
 				if (pipe(fds) || pipe(fds+2))
@@ -424,9 +413,9 @@ worker(void *info_)
 					if (fcntl(fds[i], F_SETFD, flags|O_CLOEXEC) == -1)
 						die("sd9p: fcntl F_SETFD: %s", strerr(errno));
 				}
-				if ((FIDS[fidi].i.auth.pidstatus = fork()) == -1)
+				if ((FIDS[fidi].info.auth.pidstatus = fork()) == -1)
 					die("sd9p: fork: %s", strerr(errno));
-				if (!FIDS[fidi].i.auth.pidstatus) {
+				if (!FIDS[fidi].info.auth.pidstatus) {
 					if ((dup2(fds[1],1)==-1) || (dup2(fds[2],0)==-1))
 						die("sd9p: dup2: %s", strerror(errno));
 					if (execvp(ARGV[2], ARGV+2) == -1)
@@ -434,9 +423,9 @@ worker(void *info_)
 				}
 				if (close(fds[1]) || close(fds[2]))
 					die("sd9p: close pipe: %s", strerr(errno));
-				FIDS[fidi].i.auth.r = fds[0], FIDS[fidi].i.auth.w = fds[3];
+				FIDS[fidi].info.auth.r = fds[0], FIDS[fidi].info.auth.w = fds[3];
 				struct stat buf;
-				if (fstat(FIDS[fidi].i.auth.r, &buf))
+				if (fstat(FIDS[fidi].info.auth.r, &buf))
 					die("sd9p: fstat auth r: %s", strerr(errno));
 				FIDS[fidi].qid = getqid(&buf, QTAUTH);
 				wqid(msgbuf+7, FIDS[fidi].qid);
@@ -467,24 +456,24 @@ AUTHFREE:
 					err=1, sayerr(msgbuf, "afid not found");
 				else if (!(QIDS[FIDS[fidi].qid].type & QTAUTH))
 					err=1, sayerr(msgbuf, "afid not open for authentication");
-				else if (strcmp(uname, FIDS[fidi].i.auth.uname))
+				else if (strcmp(uname, FIDS[fidi].info.auth.uname))
 					err=1, sayerr(msgbuf, "uname doesn't match afid's uname");
-				else if (strcmp(aname, FIDS[fidi].i.auth.aname))
+				else if (strcmp(aname, FIDS[fidi].info.auth.aname))
 					err=1, sayerr(msgbuf, "aname doesn't match afid's aname");
-				else if (FIDS[fidi].i.auth.pidstatus) {
-					if (FIDS[fidi].i.auth.pidstatus > 1) {
-						pid_t pid = FIDS[fidi].i.auth.pidstatus;
+				else if (FIDS[fidi].info.auth.pidstatus) {
+					if (FIDS[fidi].info.auth.pidstatus > 1) {
+						pid_t pid = FIDS[fidi].info.auth.pidstatus;
 						int statloc;
 						if (((res = waitpid(pid, &statloc, WNOHANG))) == -1)
 							die("sd9p: waitpid %ld attach: %s", pid, strerr(errno));
 						if (res && WIFEXITED(statloc))
-							FIDS[fidi].i.auth.pidstatus = !!WEXITSTATUS(statloc);
+							FIDS[fidi].info.auth.pidstatus = !!WEXITSTATUS(statloc);
 						else if (res && WIFSIGNALED(statloc))
-							FIDS[fidi].i.auth.pidstatus = 1;
+							FIDS[fidi].info.auth.pidstatus = 1;
 					}
-					if (FIDS[fidi].i.auth.pidstatus > 1)
+					if (FIDS[fidi].info.auth.pidstatus > 1)
 						err=1, sayerr(msgbuf, "authentication incomplete");
-					else if (FIDS[fidi].i.auth.pidstatus)
+					else if (FIDS[fidi].info.auth.pidstatus)
 						err=1, sayerr(msgbuf, "authentication unsuccessful");
 				}
 				rwunlock(&QIDLOCK, "QIDLOCK attach afid check");
@@ -497,7 +486,7 @@ AUTHFREE:
 			memmove(aname+strlen(ARGV[1]), aname, strlen(aname)+1);
 			memcpy(aname, ARGV[1], strlen(ARGV[1]));
 			unlock(&info->alertlock, "alertlock attach open");
-			fd = open(aname, O_DIRECTORY|O_CLOEXEC|O_SEARCH);
+			fd = open(aname, O_DIRECTORY|O_CLOEXEC|O_RDONLY);
 			lock(&info->alertlock, "alertlock attach open");
 			if (info->alert != NONE)
 				goto ATTACHFREE;
@@ -529,16 +518,12 @@ AUTHFREE:
 			else {
 				FIDS[fidi].fid = fid;
 				FIDS[fidi].qid = getqid(&buf, 0);
-				FIDS[fidi].offset = 0;
-				FIDS[fidi].i.f.dir = malloc(sizeof(struct anode));
-				FIDS[fidi].i.f.dir->name = "/";
-				FIDS[fidi].i.f.dir->parent = FIDS[fidi].i.f.dir;
-				FIDS[fidi].i.f.dir->fd = fd;
-				FIDS[fidi].i.f.dir->refs = 0;
-				if ((res=pthread_rwlock_init(&FIDS[fidi].i.f.dir->lock)))
-					die("sd9p: pthread_rwlock_init attach dir: %s", strerr(res));
-				FIDS[fidi].i.f.name = "/";
-				FIDS[fidi].i.f.dirent = NULL;
+				FIDS[fidi].info.f.fd = fd;
+				fd = -1;
+				FIDS[fidi].info.f.pfd = 0;
+				FIDS[fidi].info.f.offset = 0;
+				FIDS[fidi].info.f.name = NULL;
+				FIDS[fidi].info.f.dirent = NULL;
 				wqid(msgbuf+7, FIDS[fidi].qid);
 				say(TATTACH+1, msgbuf, 13);
 			}
@@ -606,10 +591,10 @@ main(int argc, char **argv)
 	MSGBUF = malloc(MINLEN);
 	if (!MSGBUF)
 		die("sd9p: malloc first %d (?!) bytes: %s", MINLEN, strerror(errno));
-	if (sem_init(&MSGNEW, 0, 0))
-		die("sd9p: sem_init MSGNEW: %s", strerror(errno));
-	if (sem_init(&MSGGOT, 0, 0))
-		die("sd9p: sem_init MSGGOT: %s", strerror(errno));
+	if (!((MSGNEW=dispatch_semaphore_create(0))))
+		die("sd9p: dispatch_semaphore_create MSGNEW: not enough memory");
+	if (!((MSGGOT=dispatch_semaphore_create(0))))
+		die("sd9p: dispatch_semaphore_create MSGGOT: not enough memory");
 	int res = pthread_mutex_init(&WLOCK, NULL);
 	if (res)
 		die("sd9p: pthread_mutex_init WLOCK: %s", strerror(res));
@@ -695,11 +680,11 @@ main(int argc, char **argv)
 				if (FIDS[i].fid == NOFID)
 					continue;
 				if (QIDS[FIDS[i].qid].type & QTAUTH) {
-					free(FIDS[i].i.auth.uname), free(FIDS[i].i.auth.aname);
-					if (close(FIDS[i].i.auth.w) || close(FIDS[i].i.auth.r))
+					free(FIDS[i].info.auth.uname), free(FIDS[i].info.auth.aname);
+					if (close(FIDS[i].info.auth.w) || close(FIDS[i].info.auth.r))
 						die("sd9p: close auth fds: %s", strerr(errno));
-					if (FIDS[i].i.auth.pidstatus > 1) {
-						pid_t pid = FIDS[i].i.auth.pidstatus;
+					if (FIDS[i].info.auth.pidstatus > 1) {
+						pid_t pid = FIDS[i].info.auth.pidstatus;
 						if (kill(pid, SIGTERM))
 							die("sd9p: kill %ld SIGTERM: %s", pid, strerr(errno));
 						int statloc;
@@ -711,26 +696,11 @@ main(int argc, char **argv)
 						}
 					}
 				} else {
-					if (QIDS[FIDS[i].qid].type & QTDIR)
-						free(FIDS[i].i.f.dirent);
-					else if (fd != -1)
-						close(FIDS[i].i.f.fd);
-					lock(&FIDS[i].i.f.dir->lock, "anode version");
-					while (!--FIDS[i].i.f.dir->refs) {
-						close(FIDS[i].i.f.dir->fd);
-						unlock(&FIDS[i].i.f.dir->lock, "anode version");
-						if ((res=pthread_mutex_destroy(&FIDS[i].i.f.dir->lock)))
-							die("sd9p: pthread_mutex_destroy anode version: %s", strerr(res));
-						if (FIDS[i].i.f.dir->name[0] == '/') {
-							free(FIDS[i].i.f.dir);
-							break;
-						}
-						free(FIDS[i].i.f.dir->name);
-						struct anode *pdir = FIDS[i].i.f.dir->parent;
-						free(FIDS[i].i.f.dir);
-						FIDS[i].i.f.dir = pdir;
-						lock(&FIDS[i].i.f.dir->lock, "anode version loop");
-					}
+					if (FIDS[i].info.f.fd)
+						close(FIDS[i].info.f.fd);
+					if (FIDS[i].info.f.pfd)
+						close(FIDS[i].info.f.pfd);
+					free(FIDS[i].info.f.name), free(FIDS[i].info.f.dirent);
 				}
 				FIDS[i].fid = NOFID;
 			}
@@ -765,11 +735,8 @@ main(int argc, char **argv)
 
 		// Pass on to a worker
 		} else {
-			if (sem_post(&MSGNEW))
-				die("sd9p: sem_post MSGNEW: %s", strerr(errno));
-			do; while (((res=sem_wait(&MSGGOT))) && (errno==EINTR));
-			if (res)
-				die("sd9p: sem_wait MSGGOT: %s", strerr(errno));
+			dispatch_semaphore_signal(MSGNEW);
+			dispatch_semaphore_wait(MSGGOT, DISPATCH_TIME_FOREVER);
 		}
 	}
 }
