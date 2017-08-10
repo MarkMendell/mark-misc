@@ -83,14 +83,14 @@ case attach:
 	w FLK.
 	AFREE: free aname,uname,path
 case walk:
-	pfd=-1, nwnames*=null
+	pfd=-1, wnames*=NULL
 	fid[4] newfid[4] nwname[2]
 	check nwname<=16
-	calloc nwnames
+	wnames=calloc(char**wnames)
 	0..nwname-:
 		len,relpath,no !end /,parses
 	err=0 .r FLK
-	fid: fd-? dir|0?
+	fid: fd-?
 	qid, aqid, dup p?fd, name
 	r FLK. err=>WFREE
 	0..nwname-:  //open that f's pfd
@@ -99,7 +99,7 @@ case walk:
 		unlk{fstatat(pfd,name)}
 		wqid
 	.. at root!!!
-	WFREE: pfd,if nwnames:loop,free
+	WFREE: pfd, wnames free all
 default:
 	sayerr
 END:
@@ -118,3 +118,4 @@ close,open,write
 open, (mv), ..
 fid1,fid2,rename fid1, open fid2
 bad st_{dev,ino}
+signal before hanging syscall?
