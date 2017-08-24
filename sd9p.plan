@@ -91,7 +91,7 @@ case walk:
 		len,relpath,no !end /,parses
 	err=0 .r FLK
 	fid: fd-?
-	qid, aqid, dup p?fd, name
+	qid, aqid, dup pfd, name
 	r FLK. err=>WFREE
 	0..nwname-:  //open that f's pfd
 		unlk{tmp,pfd=oat(pfd,name)}
