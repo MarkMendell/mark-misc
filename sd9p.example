@@ -1,0 +1,11 @@
+a/b/c
+
+fid.c:            fid.b:
+	c                 b
+	pfd.b             pfd.a
+
+walk fid.c ..     walk fid.b c
+
+fid.b:            fid.c:
+	""                c
+	pfd.a             pfd.b

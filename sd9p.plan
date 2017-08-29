@@ -1,8 +1,7 @@
 qid:{dev,ino,type,v}
-anode:{name,parent,fd,refs,lk}
 {fid,q,ofs
 	auth:{pidstatus,r,w,uname,aname}
-	:{fd,dir,dirlk,dirent,name}}
+	:{fd,pfd,dirent,name}}
 MLEN=0,BUF,NEW,GOT,WLK,TAGLK
 FS[MXF],FLK,QS,QC=0,QLK
 
@@ -83,23 +82,25 @@ case attach:
 	w FLK.
 	AFREE: free aname,uname,path
 case walk:
-	pfd=-1, wnames*=NULL
+	pfd=-1, wnames*=NULL, fname=NULL
 	fid[4] newfid[4] nwname[2]
 	check nwname<=16
 	wnames=calloc(char**wnames)
 	0..nwname-:
-		len,relpath,no !end /,parses
+		len,relpath,no . !end /,parses
 	err=0 .r FLK
 	fid: fd-?
-	qid, aqid, dup pfd, name
+	qid, aqid, dup pfd, copy f?name
 	r FLK. err=>WFREE
 	0..nwname-:  //open that f's pfd
-		unlk{tmp,pfd=oat(pfd,name)}
+		newpfdname;
+		..:unlk{fstat(pfd)};aqid?.:..
+		else:name
+		unlk{tmp,pfd=oat(pfd,new...)}
 		name=nwname[i]
 		unlk{fstatat(pfd,name)}
 		wqid
-	.. at root!!!
-	WFREE: pfd, wnames free all
+	WFREE: pfd,wnames free all,fname
 default:
 	sayerr
 END:
