@@ -318,6 +318,7 @@ rlock(pthread_rwlock_t *lock, char *s)
 uint64_t
 getqid(struct stat *buf, uint8_t type)
 {
+	// rlock QIDLOCK???
 	uint64_t qid = matchqid(buf);
 	if (qid == QIDC) {
 		rwunlock(&QIDLOCK, "QIDLOCK getqid start");
