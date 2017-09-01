@@ -1,7 +1,7 @@
 qid:{dev,ino,type,v}
 {fid,q,ofs
 	auth:{pidstatus,r,w,uname,aname}
-	:{fd,pfd,dirent,name}}
+	:{fd,pfd,dirent,name,aqid}}
 MLEN=0,BUF,NEW,GOT,WLK,TAGLK
 FS[MXF],FLK,QS,QC=0,QLK
 
@@ -92,7 +92,9 @@ case walk:
 	fid: fd-?
 	qid, aqid, dup pfd, copy f?name
 	r FLK. err=>WFREE
-	0..nwname-:  //open that f's pfd
+	name=fname
+	nwqid;
+	=0..nwname-: //open that f's pfd
 		newpfdname;
 		..:unlk{fstat(pfd)};aqid?.:..
 		else:name
@@ -100,6 +102,11 @@ case walk:
 		name=nwname[i]
 		unlk{fstatat(pfd,name)}
 		wqid
+	.w FLK
+	newfid!fid&?err
+	set fid stuff
+	pfd=-1, null used name
+	w FLK.
 	WFREE: pfd,wnames free all,fname
 default:
 	sayerr
