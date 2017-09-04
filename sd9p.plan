@@ -107,6 +107,8 @@ case walk:
 	set fid stuff
 	pfd=-1, null used name
 	w FLK.
+	write nwqid
+	say rwalk buf 2+nw*13
 	WFREE: pfd,wnames free all,fname
 default:
 	sayerr
