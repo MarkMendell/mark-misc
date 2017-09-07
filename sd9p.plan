@@ -104,7 +104,7 @@ case walk:
 		wqid
 	.w FLK
 	newfid!fid&?err
-	set fid stuff
+	set fid stuff (..?"")
 	pfd=-1, null used name
 	w FLK.
 	write nwqid
