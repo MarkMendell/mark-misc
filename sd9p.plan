@@ -93,8 +93,8 @@ case walk:
 	qid, aqid, dup pfd, copy f?name
 	r FLK. err=>WFREE
 	name=fname
-	nwqid;
-	=0..nwname-: //open that f's pfd
+	nwqid=0
+	<nwname: //open that f's pfd
 		newpfdname;
 		..:unlk{fstat(pfd)};aqid?.:..
 		else:name
@@ -102,11 +102,14 @@ case walk:
 		name=nwname[i]
 		unlk{fstatat(pfd,name)}
 		wqid
-	.w FLK
-	newfid!fid&?err
-	set fid stuff (..?"")
-	pfd=-1, null used name
-	w FLK.
+		nwqid++
+	nwqid==nwname?
+		.w FLK
+		newfid!fid&?err
+		set fid stuff (..?"")
+		pfd=-1, null used name
+		w FLK.
+	elif !nwqid:sayerr,WFREE
 	write nwqid
 	say rwalk buf 2+nw*13
 	WFREE: pfd,wnames free all,fname
