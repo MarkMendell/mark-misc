@@ -43,21 +43,14 @@ struct worker {
 	pthread_mutex_t alertlock;
 	uint16_t tag;
 };
-struct anode {
-	char *name;
-	struct anode *parent;
-	int fd;
-	unsigned int refs;
-	pthread_rwlock_t lock;
-};
 struct auth {
 	pid_t pidstatus;  // 0/1 is exit status, otherwise pid
 	int r, w;
 	char *uname, *aname;
 };
 struct file {
-	int fd;
-	struct anode *pdir, *dir;
+	int fd, pfd;
+	uint64_t aqid;
 	char *name;
 	char *dirent;
 };
@@ -266,7 +259,7 @@ cleananame(char **aname)
 		} else
 			i--;
 
-	*aname = realloc(*aname, len+1);
+	*aname = realloc(*aname, len+1); // TODO: remove?
 }
 
 void
@@ -531,14 +524,9 @@ AUTHFREE:
 				FIDS[fidi].fid = fid;
 				FIDS[fidi].qid = getqid(&buf, 0);
 				FIDS[fidi].offset = 0;
-				FIDS[fidi].i.f.dir = malloc(sizeof(struct anode));
-				FIDS[fidi].i.f.dir->name = "/";
-				FIDS[fidi].i.f.dir->parent = FIDS[fidi].i.f.dir;
-				FIDS[fidi].i.f.dir->fd = fd;
-				FIDS[fidi].i.f.dir->refs = 0;
-				if ((res=pthread_rwlock_init(&FIDS[fidi].i.f.dir->lock)))
-					die("sd9p: pthread_rwlock_init attach dir: %s", strerr(res));
-				FIDS[fidi].i.f.name = "/";
+				//TODO: fd=-1? (or no because / so never happens)
+				//TODO: what to set on /?
+				FIDS[fidi].i.f.name = "/"; //TODO: malloc this? or no bc /
 				FIDS[fidi].i.f.dirent = NULL;
 				wqid(msgbuf+7, FIDS[fidi].qid);
 				say(TATTACH+1, msgbuf, 13);
