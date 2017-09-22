@@ -556,6 +556,8 @@ END:
 	}
 }
 
+/* Get the next message into dest of length len, responding about short reads
+   using buf. */
 void
 get(char *dest, size_t len, char *buf)
 {
@@ -572,6 +574,7 @@ get(char *dest, size_t len, char *buf)
 	}
 }
 
+/* waitpid on pid into statloc, exiting with nonzero status on error. */
 void
 waitpidordie(pid_t pid, int *statloc)
 {
@@ -624,7 +627,9 @@ main(int argc, char **argv)
 			die("sd9p: pthread_create %d: %s", i, strerr(res));
 	}
 
+	// Main loop
 	while (!feof(stdin)) {
+
 		// Read in message
 		MSGBUF[5]=MSGBUF[6]=0xFF, get(MSGBUF, 4, MSGBUF);
 		uint32_t msglen = le2uint(MSGBUF, 4);
@@ -653,6 +658,8 @@ main(int argc, char **argv)
 
 		// Handle version messages
 		if (MSGBUF[4] == TVERSION) {
+
+			// Get protocol and message length
 			uint32_t newmsglen;
 			char *version;
 			if (parsemsg(MSGBUF, "4s", &newmsglen, &version))
@@ -671,6 +678,8 @@ main(int argc, char **argv)
 			}
 			if (!((MSGBUF = realloc(MSGBUF, MSGLEN=newmsglen))))
 				die("sd9p: realloc: %s", strerr(errno));
+
+			// Reset worker threads
 			for (int i=0; i<THREADC; i++) {
 				lock(&threads[i].alertlock, "alert abort");
 				threads[i].alert = ABORT;
@@ -678,6 +687,8 @@ main(int argc, char **argv)
 				if ((res=pthread_kill(threads[i].id, SIGUSR1)))
 					die("sd9p: pthread_kill %d: %s", i, strerr(res));
 			}
+
+			// Clear FIDs
 			wlock(&FIDLOCK, "FIDLOCK reset");
 			rlock(&QIDLOCK, "QIDLOCK fid reset");
 			for (int i=0; i<MAXFIDS; i++) {
@@ -704,37 +715,28 @@ main(int argc, char **argv)
 						free(FIDS[i].i.f.dirent);
 					else if (fd != -1)
 						close(FIDS[i].i.f.fd);
-					lock(&FIDS[i].i.f.dir->lock, "anode version");
-					while (!--FIDS[i].i.f.dir->refs) {
-						close(FIDS[i].i.f.dir->fd);
-						unlock(&FIDS[i].i.f.dir->lock, "anode version");
-						if ((res=pthread_mutex_destroy(&FIDS[i].i.f.dir->lock)))
-							die("sd9p: pthread_mutex_destroy anode version: %s", strerr(res));
-						if (FIDS[i].i.f.dir->name[0] == '/') {
-							free(FIDS[i].i.f.dir);
-							break;
-						}
-						free(FIDS[i].i.f.dir->name);
-						struct anode *pdir = FIDS[i].i.f.dir->parent;
-						free(FIDS[i].i.f.dir);
-						FIDS[i].i.f.dir = pdir;
-						lock(&FIDS[i].i.f.dir->lock, "anode version loop");
-					}
+					//TODO: cleanup right stuff
 				}
 				FIDS[i].fid = NOFID;
 			}
 			rwunlock(&QIDLOCK, "QIDLOCK fid reset");
 			rwunlock(&FIDLOCK, "FIDLOCK reset");
+
+			// Reply to successful version message
 			uint2le(MSGBUF+7+4, 2, 6);
 			say(TVERSION+1, MSGBUF, 4+2+6);
 
 		// Handle flush message
 		} else if (MSGBUF[4] == TFLUSH) {
+
+			// Get tag to flush
 			uint16_t tag;
 			if ((msglen < 9) || ((tag=le2uint(MSGBUF+7,2)) == NOTAG)) {
 				say(TFLUSH+1, MSGBUF, 0);
 				continue;
 			}
+
+			// Signal worker with matching tag
 			int found = 0;
 			wlock(&TAGLOCK, "TAGLOCK send flush");
 			for (int i=0; i<THREADC; i++)
