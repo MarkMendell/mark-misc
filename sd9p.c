@@ -91,6 +91,7 @@ sigusr1(int sig)
 {  // This function intentionally left blank
 }
 
+/* printf to stderr with a newline, then exit with nonzero status. */
 void 
 die(char *errfmt, ...)
 {
@@ -102,6 +103,7 @@ die(char *errfmt, ...)
 	exit(EXIT_FAILURE);
 }
 
+/* Write to buf len bytes of d in little endian. */
 void
 uint2le(char *buf, int len, uint64_t d)
 {
@@ -109,6 +111,7 @@ uint2le(char *buf, int len, uint64_t d)
 		buf[i] = d >> 8*i;
 }
 
+/* Get the strerror string for errnum (only works once). */
 char*
 strerr(int errnum)
 {
@@ -118,6 +121,7 @@ strerr(int errnum)
 	return strerror(errnum);
 }
 
+/* Lock lock described by s. */
 void
 lock(pthread_mutex_t *lock, char *s)
 {
@@ -126,6 +130,7 @@ lock(pthread_mutex_t *lock, char *s)
 		die("sd9p: pthread_mutex_lock %s: %s", s, strerr(res));
 }
 
+/* Unlock lock described by s. */
 void
 unlock(pthread_mutex_t *lock, char *s)
 {
@@ -134,6 +139,8 @@ unlock(pthread_mutex_t *lock, char *s)
 		die("sd9p: pthread_mutex_unlock %s: %s", s, strerr(res));
 }
 
+/* Output type 9p message stored in buf of bodylen length. The message should
+   start 7 bytes into buf, and bytes 6-7 should be the tag. */
 void
 say(char type, char *buf, size_t bodylen)
 {
@@ -148,6 +155,7 @@ say(char type, char *buf, size_t bodylen)
 	unlock(&WLOCK, "write lock");
 }
 
+/* Return the little endian value stored in buf of length len. */
 uint64_t
 le2uint(char *buf, int len)
 {
@@ -157,6 +165,7 @@ le2uint(char *buf, int len)
 	return d;
 }
 
+/* Output a 9p error message using buf by sprintf'ing the rest of the args. */
 void
 sayerr(char *buf, char *errfmt, ...)
 {
@@ -169,6 +178,9 @@ sayerr(char *buf, char *errfmt, ...)
 	say(107, buf, len+2);
 }
 
+/* Parse 9p message msg with body format fmt and store the values in the rest of
+   the args. fmt is a string where digits are a little endian number of that
+	 length and s is a 9p string. */
 int
 parsemsg(char *msg, char *fmt, ...)
 {
@@ -224,6 +236,7 @@ parsemsg(char *msg, char *fmt, ...)
 	return 0;
 }
 
+/* Simplify the path aname. */
 void
 cleananame(char **aname)
 {
@@ -262,6 +275,7 @@ cleananame(char **aname)
 	*aname = realloc(*aname, len+1); // TODO: remove?
 }
 
+/* Lock lock described by s for writing. */
 void
 wlock(pthread_rwlock_t *lock, char *s)
 {
@@ -270,6 +284,8 @@ wlock(pthread_rwlock_t *lock, char *s)
 		die("sd9p: pthread_rwlock_wrlock %s: %s", s, strerr(res));
 }
 
+/* Return the index of fid in the global fid array, or the number of current
+   fids if it isn't found. The fid array lock should be held. */
 int
 getfidi(uint32_t fid)
 {
@@ -282,6 +298,7 @@ getfidi(uint32_t fid)
 	return unusedfidi;
 }
 
+/* Unlock lock described by s. */
 void
 rwunlock(pthread_rwlock_t *lock, char *s)
 {
@@ -290,6 +307,8 @@ rwunlock(pthread_rwlock_t *lock, char *s)
 		die("sd9p: pthread_rwlock_unlock %s: %s", s, strerr(res));
 }
 
+/* Return the qid of the file identified by buf, or the number of qids if no
+   match is found. The qid array's lock should be held. */
 uint64_t
 matchqid(struct stat *buf)
 {
@@ -300,6 +319,7 @@ matchqid(struct stat *buf)
 	return qid;
 }
 
+/* Lock lock described by s for reading. */
 void
 rlock(pthread_rwlock_t *lock, char *s)
 {
@@ -308,6 +328,8 @@ rlock(pthread_rwlock_t *lock, char *s)
 		die("sd9p: pthread_rwlock_rdlock %s: %s", s, strerr(res));
 }
 
+/* Get the qid for the file identified by buf of 9p type, possibly creating a
+   new entry. The qid array lock shouldn't be held by the calling thread. */
 uint64_t
 getqid(struct stat *buf, uint8_t type)
 {
@@ -337,6 +359,7 @@ getqid(struct stat *buf, uint8_t type)
 	return qid;
 }
 
+/* Write to buf the entry for qid. */
 void
 wqid(char *buf, uint64_t qid)
 {
@@ -347,6 +370,7 @@ wqid(char *buf, uint64_t qid)
 	rwunlock(&QIDLOCK, "QIDLOCK wqid");
 }
 
+/* Output a 9p error message using buf like 's: strerror(errnum)'. */
 void
 saystrerr(char *buf, char *s, int errnum)
 {
@@ -356,6 +380,7 @@ saystrerr(char *buf, char *s, int errnum)
 	sayerr(buf, "%s: %s", s, errs);
 }
 
+/* Loop forever handling 9p messages. */
 void*
 worker(void *info_)
 {
