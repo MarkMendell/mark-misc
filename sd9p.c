@@ -286,6 +286,7 @@ wlock(pthread_rwlock_t *lock, char *s)
 
 /* Return the index of fid in the global fid array, or the number of current
    fids if it isn't found. The fid array lock should be held. */
+// TODO: s/fidi/ifid/g
 int
 getfidi(uint32_t fid)
 {
@@ -468,7 +469,7 @@ AUTHFREE:
 
 		} case TATTACH: {
 			uint32_t fid, afid;
-			char *uname, *aname;
+			char *uname=NULL, *aname=NULL;
 			int fd = -1;
 			if (parsemsg(msgbuf, "44ss", &fid, &afid, &uname, &aname))
 				goto ATTACHFREE;
@@ -561,6 +562,154 @@ ATTACHFREE:
 			free(aname), free(uname);
 			if (fd != -1)
 				close(fd);
+			break;
+
+		} case TWALK: {
+			uint32_t fid, newfid;
+			uint16_t nwname;
+			if (parsemsg("442", &fid, &newfid, &nwname))
+				goto END;
+			if (nwname > 16) {
+				sayerr(msgbuf, "nwname > 16 (%u)", nwname);
+				goto END;
+			}
+			char **wnames = calloc(nwname, sizeof(char*));
+			if (!wnames)
+				die("sd9p: calloc %u wnames: %s", nwname, strerr(errno));
+			int pfd = -1;
+			char *fname = NULL;
+			uint32_t msglen = le2uint(msgbuf, 4);
+			uint32_t imsg = 7+4+4+2;
+			for (int iwname=0; iwname<nwname; iwname++) {
+				uint32_t msgleft = msglen - imsg;
+				uint16_t slen;
+				if ((msgleft < 2) || (msgleft-2 < (slen=le2uint(msg+(imsg+=2), 2)))) {
+					sayerr(msgbuf, "short message (in wnames)");
+					goto WALKFREE;
+				}
+				char *s = wnames[iwname] = malloc(slen+1);
+				if (!s)
+					die("sd9p: malloc wname (len %u): %s", slen, strerr(errno));
+				*stpncpy(s, msgbuf+imsg, slen) = '\0';
+				imsg += slen;
+				if ((s[0] == '.') && (!s[1] || (s[1] == '/')) {
+					sayerr(msgbuf, "wname '.' does not exist in 9p");
+					goto WALKFREE;
+				}
+				for (uint16_t is=0; is<(slen && slen-1); is++)
+					if (s[is] == '/') {
+						sayerr(msgbuf, "wname can't have non-ultimate / (%s)", s);
+						goto WALKFREE;
+					}
+			}
+			int err=0;
+			rlock(&FIDLOCK, "FIDLOCK walk fid");
+			int ifid = getfidi(fid);
+			if ((ifid == MAXFIDS) || (FIDS[ifid].fid == NOFID))
+				err=1, sayerr(msgbuf, "fid %u not found", fid);
+			else if (QIDS[FIDS[ifid].qid].type & QTAUTH)
+				err=1, sayerr(msgbuf, "can't walk auth fid (%u)", fid);
+			else {
+				uint64_t qid = FIDS[ifid].qid;
+				uint64_t aqid = FIDS[ifid].i.f.aqid;
+        if ((pfd = dup(FIDS[ifid].i.f.pfd)) == -1)
+					die("sd9p: dup pfd: %s", strerr(errno));
+				copystring(FIDS[ifid].i.f.name, &fname);
+			}
+			rwunlock(&FIDLOCK, "FIDLOCK walk fid");
+			if (err)
+				goto WALKFREE;
+			char *name = fname;
+			for (int i=0; i<nwname; i++) {
+				char *newpfdname = name;
+				if (!strcmp(name, "..")) {
+					unlock(&info->alertlock, "alertlock walk fstat");
+					struct stat buf;
+					if (fstat(pfd, &buf))
+						die("sd9p: fstat walk: %s", strerr(errno));
+					lock(&info->alertlock, "alertlock walk fstat");
+					if (info->alert != NONE)
+						goto WALKFREE;
+					if (getqid(&buf, 0) == aqid)
+						newpfdname = ".";
+				}
+				unlock(&info->alertlock, "alertlock walk fopenat");
+				int tmp = openat(pfd, newpfdname, O_DIRECTORY|O_CLOEXEC|O_SEARCH);
+				lock(&info->alertlock, "alertlock walk openat");
+				if (tmp != -1) {
+					close(pfd);
+					pfd = tmp;
+				}
+				if (info->alert != NONE)
+					goto WALKFREE;
+				if (tmp == -1) {
+					if (err == EACCES)
+						sayerr(msgbuf, "permission denied (%s)", newpfdname);
+					else if ((err == ENOENT) || (err == ENOTDIR))
+						sayerr(msgbuf, "directory not found (%s)", newpfdname);
+					else
+						saystrerr(msgbuf, "openat", err);
+					goto WALKFREE;
+				}
+				name = wnames[i];
+				unlock(&info->alertlock, "alertlock walk fstatat");
+				struct stat buf;
+				err = fstatat(pfd, name, &buf, 0);
+				lock(&info->alertlock, "alertlock walk fstatat");
+				if (info->alert != NONE)
+					goto WALKFREE;
+				if (res == -1) {
+					if (err == EACCES)
+						sayerr(msgbuf, "permission denied (%s)", name);
+					else if (err == ENOENT)
+						sayerr(msgbuff, "file not found (%s)", name);
+					else
+						saystrerr(msgbuff, "fstatat", err);
+					goto WALKFREE;
+					}
+					break;
+				}
+				wqid(msgbuf+9+(13*nwqid), qid=getqid(&buf, 0));
+			}
+			if (nwqid == nwname) {
+				err = 0;
+				wlock(&FIDLOCK, "FIDLOCK walk newfid");
+				int inewfid = getifid(newfid);
+				if (inewfid == MAXFIDS)
+					err=1, sayerr(msgbuf, "maximum fids reached (%d)", MAXFIDS);
+				else if ((FIDS[inewfid].fid != NOFID) && (fid != newfid))
+					err=1, sayerr(msgbuf, "newfid already in use (%d)", newfid);
+				else {
+					FIDS[inewfid].fid = newfid;
+					FIDS[inewfid].qid = qid;
+					FIDS[inewfid].i.f.fd = -1;
+					FIDS[inewfid].i.f.pfd = pfd;
+					pfd = -1;
+					FIDS[inewfid].i.f.aqid = aqid;
+					if (!strcmp(name, ".") || !strcmp(name, ".."))
+						FIDS[inewfid].i.f.name = calloc(1, 1);
+					else {
+						FIDS[inewfid].i.f.name = name;
+						if (nwqid == 0)
+							fname = NULL;
+						else
+							wnames[nwqid-1] = NULL;
+					}
+				}
+				rwunlock(&FIDLOCK, "FIDLOCK walk newfid");
+				if (err)
+					goto WALKFREE;
+			}
+			uint2le(msgbuf+7, 2, nwqid);
+			say(TWALK+1, msgbuf, 2+(nwqid*13));
+WALKFREE:
+			if (pfd != -1)
+				close(pfd);
+			if (wnames)
+				for (int i=0; i<nwname; i++)
+					free(wnames[i]);
+			free(wnames);
+			free(fname);
 			break;
 
 		} default:
