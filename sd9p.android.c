@@ -530,7 +530,7 @@ AUTHFREE:
 			memmove(aname+strlen(ARGV[1]), aname, strlen(aname)+1);
 			memcpy(aname, ARGV[1], strlen(ARGV[1]));
 			unlock(&info->alertlock, "alertlock attach open");
-			fd = open(aname, O_DIRECTORY|O_CLOEXEC|O_SEARCH);
+			fd = open(aname, O_DIRECTORY|O_CLOEXEC);
 			int err = errno;
 			lock(&info->alertlock, "alertlock attach open");
 			if (info->alert != NONE)
@@ -656,7 +656,7 @@ ATTACHFREE:
 						newpfdname = ".";
 				}
 				unlock(&info->alertlock, "alertlock walk fopenat");
-				int tmp = openat(pfd, newpfdname, O_DIRECTORY|O_CLOEXEC|O_SEARCH);
+				int tmp = openat(pfd, newpfdname, O_DIRECTORY|O_CLOEXEC);
 				err = errno;
 				lock(&info->alertlock, "alertlock walk openat");
 				if (tmp != -1)
@@ -694,7 +694,7 @@ ATTACHFREE:
 				}
 				if ((qid=getqid(&buf, 0)) == aqid) {
 					unlock(&info->alertlock, "alertlock walk openat /");
-					tmp = openat(pfd, wnames[nwqid], O_DIRECTORY|O_CLOEXEC|O_SEARCH);
+					tmp = openat(pfd, wnames[nwqid], O_DIRECTORY|O_CLOEXEC);
 					lock(&info->alertlock, "alertlock walk openat /");
 					if (tmp != -1)
 						close(pfd), pfd=tmp;

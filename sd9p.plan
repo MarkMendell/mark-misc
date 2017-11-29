@@ -113,6 +113,26 @@ case walk:
 	write nwqid
 	say rwalk buf 2+nw*13
 	WFREE: pfd,wnames free all,fname
+case TOPEN:
+	fd=-1
+	fid[4] mode[1]
+	r FIDLK{ifid:copy pfd,name,qid}
+	!ifid:sayerr,OFREE
+	mode&x40:
+		rlock QIDLK{is dir}
+		? sayerr,OFREE
+		unlk{fstat pfd}
+		!write:sayerr,OFREE
+	mode&xF>3:sayerr,OFREE
+	oflags=[RD,WR,RW,EX]
+	unlk{fd=openat oflags|x10?TRNC}
+	.w FIDLOCK
+	!fid match:sayerr
+	!fd-?close
+	set fd(-1),offset,orclose
+	w FIDLOCK.
+	wqid, 0[4], say T+ 13+4
+	OFREE: fd
 default:
 	sayerr
 END:
