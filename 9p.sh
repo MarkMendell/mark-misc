@@ -1,42 +1,124 @@
+le()
+{
+	test $1 -gt 511 && { echo $1 TOO BIG >&2; exit 1; }
+	printf "\\$(($1/64))$((($1%64)/8))$(($1%8))"
+	i=0; while test $((i++)) -lt $(($2-1)); do
+		printf "\0"
+	done
+}
+
 t=0
 tag()
 {
-	printf "\\$((t/8))$((t%8))\0"
-	t=$((t+1))
+	le $((t++)) 2
 }
 
 f=0
 fid()
 {
-	printf "\\$((f/8))$((f%8))\0\0\0"
-	f=$((f+1))
+	le $((f++)) 4
+}
+
+size()
+{
+	len=$1
+	shift
+	for s; do
+		len=$((len + 2 + $(printf %s "$s" | wc -c)))
+	done
+	le $len 4
 }
 
 version()
 {
-	printf '\23\0\0\0\144\377\377\0\3\0\0\6\0009P2000'
+	size 11 9P2000
+	printf '\144\377\377\0\3\0\0'
+	str 9P2000
+}
+
+str()
+{
+	le $(printf %s "$1" | wc -c) 2
+	printf %s "$1"
 }
 
 auth()
 {
-	printf '\27\0\0\0\146'
+	size 11 "$1" "$2"
+	printf '\146'
 	tag
 	fid
-	printf '\5\0enebo\3\0foo'
+	str "$1"
+	str "$2"
 }
 
 flush()
 {
-	printf '\11\0\0\0\154'
+	size 9
+	printf '\154'
 	tag
-	printf "\\$(($1/8))$(($1%8))\0"
+	le $1 2
+}
+
+attach()
+{
+	size 15 "$2" "$3"
+	printf '\150'
+	tag
+	fid
+	le $1 4
+	str "$2"
+	str "$3"
 }
 
 version
-auth
-auth
-auth
-auth
-auth
-flush 4
-cat
+auth enebo foo
+attach 0 enebo foo
+attach 0 enebo foo
+attach 0 enebo foo
+attach 0 enebo foo
+attach 0 enebo foo
+attach 0 enebo foo
+attach 0 enebo foo
+attach 0 enebo foo
+attach 0 enebo foo
+attach 0 enebo foo
+attach 0 enebo foo
+attach 0 enebo foo
+attach 0 enebo foo
+attach 0 enebo foo
+attach 0 enebo foo
+attach 0 enebo foo
+attach 0 enebo foo
+attach 0 enebo foo
+attach 0 enebo foo
+attach 0 enebo foo
+attach 0 enebo foo
+version
+auth enebo foo
+a=$((f-1))
+attach $a enebo foo
+attach $a enebo foo
+attach $a enebo foo
+attach $a enebo foo
+attach $a enebo foo
+auth enebo foo
+auth enebo foo
+auth enebo foo
+auth enebo foo
+attach $a enebo foo
+attach $a enebo foo
+attach $a enebo foo
+attach $a enebo foo
+attach $a enebo foo
+attach $a enebo foo
+attach $a enebo foo
+attach $a enebo foo
+attach $a enebo foo
+attach $a enebo foo
+attach $a enebo foo
+attach $a enebo foo
+attach $a enebo foo
+attach $a enebo foo
+attach $a enebo foo
+sleep 1
