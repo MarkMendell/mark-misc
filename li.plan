@@ -1,0 +1,17 @@
+struct numword {
+	uint64_t const;
+	char isconst;
+	char format;
+	uint8_t len;
+};
+struct sword {
+};
+union type {
+};
+struct word {
+	char name[32];
+};
+struct wordnode {
+	struct type *t;
+	struct typenode *next;
+};
