@@ -1,3 +1,4 @@
+// TODO: use str functions where relevant
 //TODO: use str functions where useful
 #include <ctype.h>
 #include <errno.h>

@@ -2,21 +2,21 @@ le()
 {
 	test $1 -gt 511 && { echo $1 TOO BIG >&2; exit 1; }
 	printf "\\$(($1/64))$((($1%64)/8))$(($1%8))"
-	i=0; while test $((i++)) -lt $(($2-1)); do
+	i=-1; while test $((i+=1)) -lt $(($2-1)); do
 		printf "\0"
 	done
 }
 
-t=0
+t=-1
 tag()
 {
-	le $((t++)) 2
+	le $((t+=1)) 2
 }
 
-f=0
+f=-1
 fid()
 {
-	le $((f++)) 4
+	le $((f+=1)) 4
 }
 
 size()
