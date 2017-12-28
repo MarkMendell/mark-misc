@@ -1,4 +1,9 @@
 DEF MAXNAME 32
+struct buffer {
+	char *mem;
+	unsigned int len;
+	unsigned int cap;
+};
 struct num {
 	uint64_t val;
 	char isconst;
@@ -33,7 +38,7 @@ case NUM:
 	val=lestuff
 	shiftbuf(&buf*, len)
 	const&!=: ++;cont
-	.val=val		
+	.val=val
 
 labelphrase buf phrs nphrs prefix
 wnodes=msgs
@@ -54,8 +59,7 @@ while iwnodes<nwnodes
 	wnodes=.nexts,n=n,i=0
 
 argc 2 or die
-parse arg1 wordnode *msgs
+parse arg1 wordnode *msgs nmsgs
 buf,prefix
-labelphrase buf msgs nmsgs prefix
-
-sigpipe?
+while buf || !feof
+	labelphrase buf {,n}msgs prefix
