@@ -1,17 +1,61 @@
-struct numword {
-	uint64_t const;
+DEF MAXNAME 32
+struct num {
+	uint64_t val;
 	char isconst;
 	char format;
 	uint8_t len;
 };
-struct sword {
+struct s {
+	uint64_t lenstorage;
+	uint64_t *lenp;
+};
+struct phrase {
+	char name[MAX+1];
+	struct wordnode **firsts;
 };
 union type {
+	struct num n;
+	struct s;
+	struct wordnode *p;
 };
-struct word {
-	char name[32];
-};
+enum type { NUM, S, PHRASE };
 struct wordnode {
-	struct type *t;
-	struct typenode *next;
+	char name[MAX+1];
+	enum type type;
+	union type t;
+	struct wordnode **nexts;
 };
+1234567890123456789012345678901234
+
+ismatch
+case NUM:
+	!fillbuf(&buf*, len): ++;cont
+	val=lestuff
+	shiftbuf(&buf*, len)
+	const&!=: ++;cont
+	.val=val		
+
+labelphrase buf phrs nphrs prefix
+wnodes=msgs
+nwnodes=nmsgs
+iwnodes=0
+while iwnodes<nwnodes
+	!ismatch: ++;cont
+	if phrase:
+		get first word
+		!matchesword: goto nomatch
+		prep prefix stuff
+		labelphrase phr ...
+		restore prefix
+	case NUM:
+		!name: cont
+		p name\t
+		case b: 01
+	wnodes=.nexts,n=n,i=0
+
+argc 2 or die
+parse arg1 wordnode *msgs
+buf,prefix
+labelphrase buf msgs nmsgs prefix
+
+sigpipe?
