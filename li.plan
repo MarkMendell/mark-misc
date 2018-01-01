@@ -17,6 +17,7 @@ struct s {
 struct phrase {
 	char name[MAX+1];
 	struct wordnode **firsts;
+	unsigned int nfirsts;
 };
 union type {
 	struct num n;
@@ -28,38 +29,113 @@ struct wordnode {
 	char name[MAX+1];
 	enum type type;
 	union type t;
+	unsigned int ntimesstorage;
+	unsigned int *ntimes;
 	struct wordnode **nexts;
+	unsigned int nnexts;
+};
+struct parsenode {
+	struct wordnode *w;
+	struct parsenode *prev;
+	int indent;
 };
 1234567890123456789012345678901234
 
-ismatch
+fillbuf buf len
+.len>=len: r0
+len<cap: do*=2while; realloc
+toread=len-.len
+len+=fread buf+len toread
+ferror: die
+ret .len>=len
+
+ismatch buf wnode
 case NUM:
-	!fillbuf(&buf*, len): ++;cont
+	!fillbuf(&buf, len): r0
 	val=lestuff
-	shiftbuf(&buf*, len)
-	const&!=: ++;cont
+	shiftbuf(&buf, len)
+	const&!=: r0
 	.val=val
+	r1	
+case S:
+	r!fillbuf(&buf, len)
+case PHRASE:
+	0..nfirsts: ismatch?r1
+	r0
 
 labelphrase buf phrs nphrs prefix
-wnodes=msgs
-nwnodes=nmsgs
-iwnodes=0
+{,n,i}wnodes={,n}msgs,0
 while iwnodes<nwnodes
-	!ismatch: ++;cont
-	if phrase:
-		get first word
-		!matchesword: goto nomatch
-		prep prefix stuff
-		labelphrase phr ...
-		restore prefix
-	case NUM:
+	ntimes=*.ntimes
+	itimes=0..ntimes-:
+		!ismatch:
+			itimes: err,go bytes
+			++;go nextnode
+		if PHRASE:
+			oldlen=len
+			oldend=prefix[len-]
+			oe==\n||!name: p[l-]=\n 
+			else:
+				c-l<strlen(name)+:
+					realloc cap+=MAXNAME+
+				pre[len-]=.
+				strcpy(pre+len,name)
+			labelphrase ...
+			pre[(len=ol)-]=oe
+			cont
 		!name: cont
-		p name\t
-		case b: 01
+		case NUM:
+			case b: 01
+			case u: %u
+		case S:
+			0..len-: esc \abfnrtv
+		fputc(\n)
 	wnodes=.nexts,n=n,i=0
+	nextnode:
+!nwnodes || fillbuf 1: ret
+p2 'li: expected '
+0..nwnodes-:
+	iw: p2 ' or '
+	name: p2 name
+	put2 (
+	case NUM:
+		put2 format
+		len!1: p2 len
+		const: p2 :val
+	case S:
+		put2 s
+		len!1: p2 len
+	case PHRASE:
+		put2 name
+	put2 )
+	ntimes!1: p2 {ntimes}
+put2 \n
+bytes:
+buf bytes
+stdin bytes
 
 argc 2 or die
-parse arg1 wordnode *msgs nmsgs
+defs=1
+struct wn **mgs=null,n=0
+line,col=1,0
+state=START
+calloc {parse,word}node
+pn->w=wn
+{,n}phrases=NULL,0
+{,n}msgs=NULL,0
+{,n}namebuf [MAXN+],0
+while col++,c=fget!=EOF:
+	case START:
+		\n\t:: die
+		(:
+			msgs=re(++nmsgs)!die
+			msgs[nmsgs-]=wn
+			st=NAMETYPEMSG
+		else:
+			namebug[0]=c,nnb=1
+			st=NAMESTART
+	case NAMETYPEMSG:
+		
 buf,prefix
-while buf || !feof
+while !fillbuf 1
 	labelphrase buf {,n}msgs prefix
