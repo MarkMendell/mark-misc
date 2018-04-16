@@ -25,8 +25,8 @@ nthstring()
 
 to=/tmp/gunread.to.$$
 from=/tmp/gunread.from.$$
-mkfifo $to $from && trap "rm $to $from" EXIT
-tls imap.gmail.com 993 >$from <$to & exec 3<$from 4>$to
+mkfifo $to $from && trap 'rm $to $from; kill -s kill $pid' EXIT
+tls imap.gmail.com 993 >$from <$to & { pid=$!; exec 3<$from 4>$to; }
 authstring=$(cat)
 cat <<-EOF >&4 &
 	1 AUTHENTICATE PLAIN
@@ -38,17 +38,14 @@ head -n 12 <&3 >/dev/null
 ids=$(head -n 1 <&3 | tail -c +10 | tr -d  | tr ' ' ,)
 test "$ids" || exit
 echo "1 FETCH $ids ENVELOPE" >&4 &
-idcount=$(echo "$ids" | tr -d [:digit:] | wc -c)
-i=0
-while test $i -lt $idcount; do
+idcount=$(echo "$ids" | tr -d '[:digit:]' | wc -c)
+i=0; while test $((i++)) -lt $idcount; do
 	read -r entry
 	printf "$(echo "$entry" | cut -f 6-7 -d ' ')"
 	subjstart=$(echo "%s" "$entry" | cut -f 3- -d '"')
 	if echo "$subjstart" | grep '^ NIL' >/dev/null; then
 		printf " %s\n" "$(nthstring "$entry" 1 )"
 	else
-		printf " %s [4m%s[0m\n" "$(nthstring "$entry" 2)" "$(nthstring "$entry" 1)"
+		printf " %s \33[4m%s\33[0m\n" "$(nthstring "$entry" 2)" "$(nthstring "$entry" 1)"
 	fi
-	i=$((i + 1))
 done <&3
-rm $to $from

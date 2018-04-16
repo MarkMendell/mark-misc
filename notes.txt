@@ -1,6 +1,11 @@
 ### dnse
 (dunce) fake dns to be localhost
 
+### ed/acme hybrid
+line-based like ed (lives in shell session and history)
+changes made change the line (if printed previously) instead of showing up as their own line
+can do mouse edits
+
 ### gme
 print group name before messages
 

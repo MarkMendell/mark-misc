@@ -102,7 +102,7 @@ while true; do
 				printf ' (%s:%02s)\n' $((seconds / 60)) $((seconds % 60))
 			else
 				tracks=$(printf %s "$info" | jget tracks)
-				count=$(printf %s "$tracks" | jvals | wc -l | tr -d [:space:])
+				count=$(printf %s "$tracks" | jvals | wc -l | tr -d '[:space:]')
 				printf ' (%s tracks)\n' "$count"
 			fi
 			# Do commands for that entry

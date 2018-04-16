@@ -1,0 +1,41 @@
+struct a,b,day,score
+sigd=0
+ttyfd
+ttyold
+ttyraw
+
+die
+sigint: sigd=1;SIG_DFL
+settty
+sigstp: setttyOLD,DFL,raise
+initstpconttty: stp,cont,new
+
+argc!2: usage
+!fopen argv1: die
+maxentries=1024
+!malloc entries 1024: die
+nentries=0
+while fscanf=4:
+	++n=max&!realloc max*=2: die
+ferror: die
+!nentries: exit
+t=time,tm=localtime(&t)
+today=(1900+_year)*365+_yday
+open tty,tcgetattr,new
+signal int;initstpconttty
+while (1)
+	weakest,min=0
+	for i 0..nentries-:
+		p=pow(2,-(to-day)/p2score
+		ifp<min:min,wkst=
+	min>0.5: break
+	c,r;
+	for (i=0;i<2&!sigd&r;i++)
+		print i?b:a
+		while !sigd&((r=rd>0&!' \r'c)|-1&eint)
+		r-1:die
+	sigd||!r:break
+	score+-'\r ';<1:=1
+	day=today
+setttyOLD
+save

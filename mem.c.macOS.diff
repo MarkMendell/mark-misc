@@ -1,0 +1,12 @@
+100,101c100,105
+< 	while (errno=0, e=entries+nentries, (res=fscanf(f, "%m[^\t] %m[^\t] %u %u ",
+< 			&e->a, &e->b, &e->day, &e->score)) == 4)
+---
+> 	char buf[1024];
+> 	while (e=entries+nentries, (res=fscanf(f, "%511[^\t] %511[^\t] %u %u ", buf,
+> 			buf+512, &e->day, &e->score)) == 4) {
+> 		if (!(e->a=malloc(strlen(buf)+1)) || !(e->b=malloc(strlen(buf+512)+1)))
+> 			die("mem: malloc entry %u: %s", nentries+1, strerror(errno));
+> 		strcpy(e->a, buf), strcpy(e->b, buf+512);
+104a109
+> 	}

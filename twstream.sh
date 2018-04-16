@@ -42,13 +42,19 @@ while true; do
 		test "$2" && echo $id >"$2"
 		sinceq="&since_id=$id"
 	done <<-EOF1
-		$(tls api.twitter.com <<-EOF2 | tail -n 1 | jvals | tac
-			GET /1.1/statuses/user_timeline.json?$q HTTP/1.1
-			Host: api.twitter.com
-			Authorization: Bearer $bearer
-			Connection: close
-			
-			EOF2
+		$(tls api.twitter.com <<-EOF2 | sed '1,/^$/d' | while read -r line1; do
+				GET /1.1/statuses/user_timeline.json?$q HTTP/1.1
+				Host: api.twitter.com
+				Authorization: Bearer $bearer
+				Connection: close
+				
+				EOF2
+			if read -r line2; then
+				printf %s "$line2"
+			else
+				printf %s "$line1"
+			fi
+		done | jvals | tac
 		)
 		EOF1
 done

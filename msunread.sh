@@ -1,32 +1,31 @@
 #!/bin/sh
-html=$(tls www.messenger.com <<-EOF | grep '"participants":'
+getid() { sed -n '/ORIGINAL_USER_ID/s/.*ORIGINAL_USER_ID":"\([^"]*\).*/\1/p'; }
+getchats()
+{
+	subchats='/"message_threads"/s/.*"message_threads":\(.*\)/\1/p'
+	sed -n "$subchats" | jget nodes | jvals
+}
+getusers() { jget all_participants nodes | jvals | jget messaging_actor; }
+response=$(<<-. tls www.messenger.com | sed -n 'H;${g;s/\n[0-9a-f]*\n//gp;}'
 	GET / HTTP/1.1
 	Host: www.messenger.com
 	Connection: close
 	Cookie: $(cat)
 	User-Agent: tls.sh
 	
-	EOF
-	)
-yourid=$(printf %s "$html" | sed 's/^.*"ORIGINAL_USER_ID":"\([0-9]*\)".*$/\1/g')
-data=$(printf %s "$html" | sed 's/^.*"mercuryPayload"://g')
-while read -r user; do
-	id=$(printf %s "$user" | jget id)
-	test ${id#fbid:} = $yourid && continue
-	name=$(printf %s "$user" | jget name | jdecode)
-	users=$(printf "%s${users:+\n}%s\t%s" "$users" $id "$name")
-done <<-EOF
-	$(printf %s "$data" | jget participants | jvals)
-	EOF
-printf %s "$data" | jget threads | jvals | sed '$d' | tac |\
-		while read -r chat; do
+	.
+)
+yourid=$(printf %s "$response" | getid)
+printf %s "$response" | getchats | while read -r chat; do
 	unread=$(printf %s "$chat" | jget unread_count)
 	test $unread -gt 0 || continue
-	name=$(printf %s "$chat" | jget name | jdecode)
-	test "$name" || name=$(printf %s "$chat" | jget participants | jvals |\
-		while read id; do
-			printf %s "$users" | grep "^$id" | cut -f 2
-		done | paste -s - | sed 's/	/, /g')
+	name=$(printf %s "$chat" | jget name)
+	test "$name" = null &&
+		name=$(printf %s "$chat" | getusers | while read -r user; do
+				test "$(printf %s "$user" | jget id)" = $yourid && continue
+				printf %s "$user" | jget name
+			done | paste -s - | sed 's/	/, /g' | jdecode)
 	printf '(%d) %s\n' $unread "$name"
-	printf '[0;37m%s[0;0m\n' "$(printf %s "$chat" | jget snippet | jdecode)"
+	msg=$(printf %s "$chat" | jget last_message nodes 0 snippet | jdecode)
+	printf '[0;37m%s[0;0m\n' "$msg"
 done
