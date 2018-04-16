@@ -84,7 +84,7 @@ int
 main(int argc, char **argv)
 {
 	if (argc != 2)
-		die("usage: mem file");
+		die("usage: mem entries");
 
 	// Read entries
 	FILE *f = fopen(argv[1], "r");
