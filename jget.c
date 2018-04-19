@@ -1,145 +1,140 @@
-#include <ctype.h>
 #include <errno.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 
-void pexit(char *msg);
-int getcharordie(void);
-int gpchar(int print);
-void nokeydie(char *key);
-void eofdie(char *key);
-void readobj(char *key, int print, int depth);
-void readarr(char *skey, int print, int depth);
-void readvalue(char *key, int print, int depth);
-int main(int argc, char **argv);
-
-
 void
-pexit(char *msg)
+die(char *errfmt, ...)
 {
-	int olderrno = errno;
-	fputs("jget: ", stderr);
-	errno = olderrno;
-	perror(msg);
+	va_list argp;
+	va_start(argp, errfmt);
+	vfprintf(stderr, errfmt, argp);
+	va_end(argp);
+	fputc('\n', stderr);
 	exit(EXIT_FAILURE);
 }
 
 int
-getcharordie(void)
+get(void)
 {
 	int c = getchar();
-	if (ferror(stdin))
-		pexit("getchar");
+	if ((c == EOF) && ferror(stdin))
+		die("jget: getchar: %s", strerror(errno));
 	return c;
+}
+
+void
+unget(char c)
+{
+	if (ungetc(c, stdin) == EOF)
+		die("jget: ungetc: failed");
+}
+
+void
+put(char c)
+{
+	if (putchar(c) == EOF)
+		die("jget: putchar: %s", strerror(errno));
 }
 
 int
-gpchar(int print)
+getput(int print)
 {
-	int c = getcharordie();
-	if (print && (c != EOF) && (putchar(c) == EOF))
-		pexit("putchar");
+	int c = get();
+	if (print && (c != EOF))
+		put(c);
 	return c;
 }
 
 void
-nokeydie(char *key)
-{
-	fprintf(stderr, "jget: key '%s' not found\n", key);
-	exit(EXIT_FAILURE);
-}
-
-void
-eofdie(char *key)
+enddie(char *key)
 {
 	if (key)
-		nokeydie(key);
+		die("jget: key '%s' not found", key);
 	else
-		fputs("jget: premature EOF\n", stderr);
-	exit(EXIT_FAILURE);
+		die("jget: premature EOF");
 }
 
+void readvalue(char *stopkey, int print, int depth);
 void
-readobj(char *key, int print, int depth)
+readobj(char *stopkey, int print, int depth)
 {
 	int c;
-	while ((c = gpchar(print)) != '}') {
+	while ((c = getput(print)) != '}') {
 		if (c == ',')
-			gpchar(print);  // "
+			getput(print);  // "
 		int escaped = 0;
-		int keymatch = key != NULL;
-		int keylen = key ? strlen(key) : -1;
+		int keymatch = stopkey != NULL;
+		int keylen = stopkey ? strlen(stopkey) : -1;
 		int i = 0;
-		while (((c = gpchar(print)) != EOF) && ((c != '"') || escaped)) {
+		while (((c = getput(print)) != EOF) && ((c != '"') || escaped)) {
 			escaped = (c == '\\') && !escaped;
-			keymatch = keymatch && (i < keylen) && (key[i++] == c);
+			keymatch = keymatch && (escaped || ((i < keylen) && (stopkey[i++] == c)));
 		}
 		if (c == EOF)
-			eofdie(key);
-		gpchar(print);  // :
+			enddie(stopkey);
+		getput(print);  // :
 		if (keymatch && (i == keylen))
 			break;
 		readvalue(NULL, print, depth+1);
 	}
-	if (key && (c == '}'))
-		nokeydie(key);
+	if (stopkey && (c == '}'))
+		enddie(stopkey);
 }
 
 void
-readarr(char *skey, int print, int depth)
+readarr(char *stopkey, int print, int depth)
 {
-	int key = skey ? atoi(skey) : -1;
+	int istop = stopkey ? atoi(stopkey) : -1;
 	int i = 0;
 	int c;
-	while (((c = getcharordie()) != ']') && (c != EOF)) {
-		if (c != ',') {
-			if (ungetc(c, stdin) == EOF)
-				pexit("ungetc");
-		} else if (print && (putchar(c) == EOF))
-			pexit("putchar");
-		if (key == i)
+	while (((c = get()) != ']') && (c != EOF)) {
+		if (c != ',')
+			unget(c);
+		else if (print)
+			put(c);
+		if (istop == i)
 			break;
 		readvalue(NULL, print, depth+1);
 		i++;
 	}
-	if ((c == ']') && print && (putchar(c) == EOF))
-		pexit("putchar");
-	if (skey && (key != i)) {
-		nokeydie(skey);
-	}
+	if ((c == ']') && print)
+		put(c);
+	if (stopkey && (istop != i))
+		enddie(stopkey);
 }
 
 void
-readvalue(char *key, int print, int depth)
+readvalue(char *stopkey, int print, int depth)
 {
-	int c = getcharordie();
-	if (print && (c != EOF) && (depth || (c != '"')) && (putchar(c) == EOF))
-		pexit("putchar");
+	int c = get();
+	if (print && (c != EOF) && (depth || (c != '"')))
+		put(c);
 	if (c == '{')
-		readobj(key, print, depth+1);
+		readobj(stopkey, print, depth+1);
 	else if (c == '[')
-		readarr(key, print, depth+1);
-	else if (key || (c == EOF))
-		eofdie(key);
+		readarr(stopkey, print, depth+1);
+	else if (stopkey || (c == EOF))
+		enddie(stopkey);
 	else if (c == '"') {
 		int escaped = 0;
-		while (((c = getcharordie()) != EOF) && ((c != '"') || escaped)) {
-			if (print && (putchar(c) == EOF))
-				pexit("putchar");
+		while (((c = get()) != EOF) && ((c != '"') || escaped)) {
+			if (print)
+				put(c);
 			escaped = (c == '\\') && !escaped;
 		}
 		if (c == EOF)
-			eofdie(key);
-		else if (print && depth && (putchar(c) == EOF))
-			pexit("putchar");
+			enddie(stopkey);
+		else if (print && depth)
+			put(c);
 	} else {
-		while (((c = getcharordie()) != EOF) && (c != ',') && (c != '}') && (c != ']'))
-			if (print && (putchar(c) == EOF))
-				pexit("putchar");
-		if ((c != EOF) && (ungetc(c, stdin) == EOF))
-			pexit("ungetc");
+		while (((c = get()) != EOF) && !strchr(",}]", c))
+			if (print)
+				put(c);
+		if (c != EOF)
+			unget(c);
 	}
 }
 
@@ -147,13 +142,11 @@ int
 main(int argc, char **argv)
 {
 	int c;
-	while ((c = getcharordie()) != EOF) {
-		if (ungetc(c, stdin) == EOF)
-			pexit("ungetc");
+	while ((c = get()) != EOF) {
+		unget(c);
 		for (int i=1; i<=argc; i++)
-			readvalue((i == argc) ? NULL : argv[i], i == argc, 0);
-		if (putchar('\n') == EOF)
-			pexit("putchar");
-		while (((c = getcharordie()) != EOF) && (c != '\n'));
+			readvalue(argv[i], i == argc, 0);
+		put('\n');
+		while (((c = get()) != EOF) && (c != '\n'));
 	}
 }
