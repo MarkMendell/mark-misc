@@ -100,7 +100,7 @@ readarr(char *stopkey, int print, int depth)
 		readvalue(NULL, print, depth+1);
 		i++;
 	}
-	if ((c == ']') && print)
+	if (print && (c == ']'))
 		put(c);
 	if (stopkey && (istop != i))
 		enddie(stopkey);
