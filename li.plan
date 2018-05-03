@@ -1,4 +1,6 @@
 DEF MAXNAME 32
+enum type { NUM, STR, PHRASE };
+SPECIAL=\t\n(){}.$:
 struct buffer {
 	char *mem;
 	unsigned int len;
@@ -12,40 +14,72 @@ struct num {
 };
 struct s {
 	uint64_t lenstorage;
-	uint64_t *lenp;
+	uint64_t *plen;
 };
 struct phrase {
 	char name[MAX+1];
-	struct wordnode **firsts;
+	struct wordnode *firsts;
 	unsigned int nfirsts;
 };
 union type {
 	struct num n;
 	struct s;
 	struct wordnode *p;
+	(^ phrase *p?)
 };
-enum type { NUM, S, PHRASE };
 struct wordnode {
 	char name[MAX+1];
 	enum type type;
 	union type t;
 	unsigned int ntimesstorage;
-	unsigned int *ntimes;
-	struct wordnode **nexts;
+	unsigned int *pntimes;
+	struct wordnode *nexts;
 	unsigned int nnexts;
 };
 struct parsenode {
+	int *pn;
+	struct wordnode **pwords;
 	struct wordnode *w;
 	struct parsenode *prev;
-	int indent;
 };
 1234567890123456789012345678901234
+
+getlabelc f pline pcol
+c=fgetc
+EOF&ferror: die
+\0: die
+\n: ++*pline
+!EOF: ++*pcol
+ret c
+
+getname f buf first pline pcol
+i=0
+first: buf[i++]=first
+while (b[i++]=glc)!EOF&!strchr SP 
+	i==MAXN+1: die
+i==1: die
+ret first=buf[i-],buf[i-]=0,first
+
+isdigits s
+;*s;s++: !isdigit: ret 0
+ret 1
+
+getpnum pc pline pcol pnode phead
+buf[NAMEMAX+1]
+*pc=getname buf
+pnum=NULL
+p=pnode;!phead;p=->prev:
+	!strcmp buf p>w>n:
+		!NUM: die
+		plen=&val
+		break
+!pnum: die
+ret pnum
 
 fillbuf buf len
 .len>=len: r0
 len<cap: do*=2while; realloc
-toread=len-.len
-len+=fread buf+len toread
+len+=fread buf+len len-.len
 ferror: die
 ret .len>=len
 
@@ -53,7 +87,6 @@ ismatch buf wnode
 case NUM:
 	!fillbuf(&buf, len): r0
 	val=lestuff
-	shiftbuf(&buf, len)
 	const&!=: r0
 	.val=val
 	r1	
@@ -63,6 +96,10 @@ case PHRASE:
 	0..nfirsts: ismatch?r1
 	r0
 
+shiftbuf buf len
+memmove buf buf+len len
+>len-=len
+
 labelphrase buf phrs nphrs prefix
 {,n,i}wnodes={,n}msgs,0
 while iwnodes<nwnodes
@@ -71,25 +108,28 @@ while iwnodes<nwnodes
 		!ismatch:
 			itimes: err,go bytes
 			++;go nextnode
-		if PHRASE:
+		print=name&(!l||l-!=\n)
+		PHRASE:
 			oldlen=len
 			oldend=prefix[len-]
-			oe==\n||!name: p[l-]=\n 
-			else:
+			print:
 				c-l<strlen(name)+:
 					realloc cap+=MAXNAME+
 				pre[len-]=.
 				strcpy(pre+len,name)
+			else: p[l-]=\n 
 			labelphrase ...
 			pre[(len=ol)-]=oe
 			cont
-		!name: cont
+		print: name
 		case NUM:
-			case b: 01
-			case u: %u
+			case print&b: 01
+			case print&u: %u
+			shiftbuf(&buf, len)
 		case S:
 			0..len-: esc \abfnrtv
-		fputc(\n)
+			shiftbuf(&buf, len)
+		print: fputc(\n)
 	wnodes=.nexts,n=n,i=0
 	nextnode:
 !nwnodes || fillbuf 1: ret
@@ -115,27 +155,87 @@ buf bytes
 stdin bytes
 
 argc 2 or die
-defs=1
-struct wn **mgs=null,n=0
-line,col=1,0
-state=START
-calloc {parse,word}node
-pn->w=wn
 {,n}phrases=NULL,0
 {,n}msgs=NULL,0
-{,n}namebuf [MAXN+],0
-while col++,c=fget!=EOF:
-	case START:
-		\n\t:: die
-		(:
-			msgs=re(++nmsgs)!die
-			msgs[nmsgs-]=wn
-			st=NAMETYPEMSG
+line,col=1,0
+getlabelc EOF: die
+while c!EOF:
+	(new thing)
+	!~(: die
+	pn,pwords,nb={0}
+	!( && (c=getname c)==::
+		!realloc ,nphr++: die
+		pn=&phr[n-].nf,pw=&phr[].f
+		*pn=*pw=0
+		strcpy phr[].name namebuf
+		c=getlabelc
+	else:
+		pn=&nmsgs,pwords=&msgs
+	parsehead={pn,pwords}
+	pnode=&phead
+	indent=0
+	while *nb || c!EOF:
+		\n:
+			*nb: die
+			while c=glc \t;
+			newind=(pn==&nmsgs)+*pcol-
+			newind<1: break
+			0..ind-newind+1:
+				tmp=pnd->prv,free,pnd=
+			pn,pwords=pnd->
+			newind>ind+1: die
+			ind=newind
+		!(pw=realloc(++*pn)): die
+		w=pw+*pn-
+		!newpnd=malloc: die
+		>prev,pn,pw,w=
+		pnd=newpnd
+		*w>name=0
+		*nb: strcpy w>name nb
+		elif !SPECIAL: c=getname w>name
+		!(: die
+		c=getname nb
+		*nb ub&isnums nb+:
+			w>type,format=NUM,*nb
+			nb[1]&nb[2]|9|0: die
+			elif nb[1]: wtn.l=-'0'	
+			else: =1
+			(isconst=c==:):
+				b: die
+				isconst=1
+				c=getname namebuf
+				!isdigits: die
+				en=0, =strtoul, en: die
+		*nb s&isnums s+:
+			w>type=STR
+			nb[1]:
+				en=0,=stu,en: die
+				plen=&storage
+			elif c$: plen=getpnum
+			else: =1,plen=&storage
 		else:
-			namebug[0]=c,nnb=1
-			st=NAMESTART
-	case NAMETYPEMSG:
-		
+			w>type=PHRASE
+			i;0..nphr-:
+				!strcmp nb phs[i]:
+					p=p+i
+					break
+			i==nphr: die
+		!): die
+		(c=getlabelc){:
+			(c=getlabelc)$:
+				w>pntimes=getpnum
+			elif EOF|SPECIAL: die
+			else:
+				c=getname namebuf
+				!isdigits: die
+				en=0,=strtoul,en: die
+				p=&storage
+			(c=getlabelc)!}: die
+			c=getlabelc
+		else: =1,p=&storage
+		*nb=0
+	while pnd!&phd: tmp=,fre,pnd=
+fclose|die
 buf,prefix
 while !fillbuf 1
 	labelphrase buf {,n}msgs prefix
