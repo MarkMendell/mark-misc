@@ -1,9 +1,9 @@
 str:len(u2)msg(s$len)
 qid:type(b)version(u4)path(u8)
-(u4).
-rversion(u:101)tag(u2)msize(u4)version(str)
-rauth(u:103)tag(u2)aqid(qid)
-rattach(u:105)tag(u2)qid(qid)
-rerror(u:107)tag(u2)error(str)
-rflush(u:109)tag(u2)
-rwalk(u:111)tag(u2)nwqid(u2)wqid(qid){$nwqid}
+(u4)
+	rversion(u:101)tag(u2)msize(u4)version(str)
+	rauth(u:103)tag(u2)aqid(qid)
+	rattach(u:105)tag(u2)qid(qid)
+	rerror(u:107)tag(u2)error(str)
+	rflush(u:109)tag(u2)
+	rwalk(u:111)tag(u2)nwqid(u2)wqid(qid){$nwqid}
