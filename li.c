@@ -18,14 +18,13 @@ struct buffer {
 };
 
 struct num {
-	unsigned int val;
+	unsigned int *pval;
 	char isconst;
 	char format;
 	uint8_t len;
 };
 
 struct str {
-	unsigned int lenstorage;
 	unsigned int *plen;
 };
 
@@ -45,7 +44,6 @@ struct wordnode {
 	union typedata t;
 	char name[MAXNAME+1];
 	enum type type;
-	unsigned int ntimesstorage;
 	unsigned int *pntimes;
 	struct wordnode *nexts;
 	unsigned int nnexts;
@@ -121,7 +119,7 @@ getpnum(FILE *f, int *pc, int *pline, int *pcol, struct parsenode *panode,
 		if (!strcmp(buf, panode->w->name)) {
 			if (panode->w->type != NUM)
 				die("li: name before line %d, col %d isn't a number type",*pline,*pcol);
-			return &panode->w->t.n.val;
+			return panode->w->t.n.pval;
 		}
 	die("li: name before line %d, col %d not found", *pline, *pcol);
 }
@@ -152,9 +150,9 @@ ismatch(struct buffer *buf, struct wordnode *w)
 		int val = 0;
 		for (int i=0; i<w->t.n.len; i++)
 			val |= buf->mem[i] << i*8;
-		if (w->t.n.isconst && (val != w->t.n.val))
+		if (w->t.n.isconst && (val != *w->t.n.pval))
 			return 0;
-		w->t.n.val = val;
+		*w->t.n.pval = val;
 		return 1;
 	} case STR:
 		return !fillbuf(buf, *w->t.s.plen);
@@ -217,9 +215,9 @@ labelmsg(struct buffer *buf, struct wordnode *msgs, unsigned int nmsgs,
 				if (print) {
 					if (w->t.n.format == 'b') {
 						for (unsigned int i=0; i<w->t.n.len; i++)
-							if (putchar('0'+((w->t.n.val>>i)&1)) == EOF)
+							if (putchar('0'+((*w->t.n.pval>>i)&1)) == EOF)
 								die("li: putchar: %s", strerror(errno));
-					} else if (printf("%u", w->t.n.val) < 0)
+					} else if (printf("%u", *w->t.n.pval) < 0)
 						die("li: printf: %s", strerror(errno));
 				}
 				shiftbuf(buf, w->t.n.len);
@@ -259,7 +257,7 @@ nextnode:;
 		case NUM:
 			fprintf(stderr, "%c%u", w->t.n.format, w->t.n.len);
 			if (w->t.n.isconst)
-				fprintf(stderr, ":%u", w->t.n.val);
+				fprintf(stderr, ":%u", *w->t.n.pval);
 			break;
 		case STR:
 			fprintf(stderr, "s%u", *w->t.s.plen);
@@ -360,6 +358,8 @@ main(int argc, char **argv)
 			c = getname(f, namebuf, 0, &line, &col);
 			if (strchr("bu", *namebuf) && isdigits(namebuf+1)) {
 				w->type = NUM;
+				if (!(w->t.n.pval = malloc(sizeof(unsigned int))))
+					die("li: malloc pval: %s", strerror(errno));
 				w->t.n.format = *namebuf;
 				if (namebuf[1] && (namebuf[2] || strchr("09", namebuf[1])))
 					die("li: bad length before line %u, col %u", line, col);
@@ -373,19 +373,21 @@ main(int argc, char **argv)
 					c = getname(f, namebuf, 0, &line, &col);
 					if (!isdigits(namebuf))
 						die("li: expected digits before line %u, col %u", line, col);
-					if (errno=0, w->t.n.val=strtoul(namebuf, NULL, 10), errno)
+					if (errno=0, *w->t.n.pval=strtoul(namebuf, NULL, 10), errno)
 						die("li: strtoul (line %u, col %u): %s",line,col,strerror(errno));
 				}
 			} else if ((*namebuf == 's') && isdigits(namebuf+1)) {
 				w->type = STR;
-				if (namebuf[1]) {
-					if (errno=0, w->t.s.lenstorage=strtoul(namebuf+1, NULL, 0), errno)
-						die("li: strtoul (line %u, col %u): %s",line,col,strerror(errno));
-					w->t.s.plen = &w->t.s.lenstorage;
-				} else if (c == '$')
+				if (!namebuf[1] && (c == '$'))
 					w->t.s.plen = getpnum(f, &c, &line, &col, panode, &pahead);
-				else
-					w->t.s.lenstorage=1, w->t.s.plen=&w->t.s.lenstorage;
+				else {
+					if (!(w->t.s.plen = malloc(sizeof(unsigned int))))
+						die("li: malloc plen: %s", strerror(errno));
+					if (!namebuf[1])
+						*w->t.s.plen = 1;
+					else if (errno=0, *w->t.s.plen=strtoul(namebuf+1, NULL, 10), errno)
+						die("li: strtoul (line %u, col %u): %s",line,col,strerror(errno));
+				}
 			} else {
 				w->type = PHRASE;
 				w->t.p = NULL;
@@ -408,16 +410,20 @@ main(int argc, char **argv)
 					c = getname(f, namebuf, c, &line, &col);
 					if (!isdigits(namebuf))
 						die("li: expected digits before line %u, col %u", line, col);
-					if (errno=0, w->ntimesstorage=strtoul(namebuf, NULL, 10), errno)
+					if (!(w->pntimes = malloc(sizeof(unsigned int))))
+						die("li: malloc pntimes: %s", strerror(errno));
+					if (errno=0, *w->pntimes=strtoul(namebuf, NULL, 10), errno)
 						die("li: strtoul before line %u, col %u: %s", line, col,
 							strerror(errno));
-					w->pntimes = &w->ntimesstorage;
 				}
 				if (c != '}')
 					die("li: expected } at line %u, col %u", line, col);
 				c = getlabelc(f, &line, &col);
-			} else
-				w->ntimesstorage=1, w->pntimes=&w->ntimesstorage;
+			} else {
+				if (!(w->pntimes = malloc(sizeof(unsigned int))))
+					die("li: malloc pntimes: %s", strerror(errno));
+				*w->pntimes = 1;
+			}
 			*namebuf = '\0';
 		}
 		while (panode != &pahead) {
