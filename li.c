@@ -52,7 +52,8 @@ struct wordnode {
 };
 
 struct parsenode {
-	int *pn;
+	unsigned int *pn;
+	int indent;
 	struct wordnode **pwords;
 	struct wordnode *w;
 	struct parsenode *prev;
@@ -79,8 +80,8 @@ getlabelc(FILE *f, int *pline, int *pcol)
 	if (!c)
 		die("li: null byte in labels file");
 	if (c == '\n')
-		++*pline;
-	if (c != EOF)
+		++*pline, *pcol=0;
+	else if (c != EOF)
 		++*pcol;
 	return c;
 }
@@ -91,7 +92,7 @@ getname(FILE *f, char *buf, char first, int *pline, int *pcol)
 	int i = 0;
 	if (first)
 		buf[i++] = first;
-	while (((buf[i++]=getlabelc(f,pline,pcol))!=EOF) && !strchr(SPECIAL, buf[i-1]))
+	while (((buf[i++]=getlabelc(f,pline,pcol))!=EOF) && !strchr(SPECIAL,buf[i-1]))
 		if (i == MAXNAME+1)
 			die("li: name at line %d, col %d too long", *pline, *pcol);
 	if (i == 1)
@@ -116,10 +117,10 @@ getpnum(FILE *f, int *pc, int *pline, int *pcol, struct parsenode *panode,
 {
 	char buf[MAXNAME+1];
 	*pc = getname(f, buf, 0, pline, pcol);
-	for (; panode!=pahead; panode=pahead->prev)
+	for (; panode!=pahead; panode=panode->prev)
 		if (!strcmp(buf, panode->w->name)) {
 			if (panode->w->type != NUM)
-				die("li: name before line %d, col %d isn't a number type", *pline, *pcol);
+				die("li: name before line %d, col %d isn't a number type",*pline,*pcol);
 			return &panode->w->t.n.val;
 		}
 	die("li: name before line %d, col %d not found", *pline, *pcol);
@@ -138,7 +139,7 @@ fillbuf(struct buffer *buf, unsigned int len)
 	buf->len += fread(buf->mem+buf->len, 1, len-buf->len, stdin);
 	if (ferror(stdin))
 		die("li: fread stdin: %s", strerror(errno));
-	return buf->len >= len;
+	return buf->len < len;
 }
 
 int
@@ -191,18 +192,16 @@ labelmsg(struct buffer *buf, struct wordnode *msgs, unsigned int nmsgs,
 				iwnodes++;
 				goto nextnode;
 			}
-			int print = *w->name && (!prefix->len || (prefix->mem[prefix->len-1]!='\n'));
+			int print = *w->name&&(!prefix->len||(prefix->mem[prefix->len-1]!='\n'));
 			if (w->type == PHRASE) {
 				unsigned int oldlen = prefix->len;
 				unsigned int oldend = oldlen && prefix->mem[oldlen-1];
 				if (print) {
-					prefix->len += strlen(w->name) + !!oldlen;
+					prefix->len += strlen(w->name) + 1;
 					if ((prefix->cap < prefix->len) &&
-							!(prefix->mem=realloc(prefix->mem, prefix->cap +=MAXNAME+1)))
+							!(prefix->mem=realloc(prefix->mem, prefix->cap+=MAXNAME+1)))
 						die("li: realloc prefix %u: %s", prefix->cap, strerror(errno));
-					if (oldlen)
-						prefix->mem[oldlen] = '.';
-					strcpy(prefix->mem+oldlen+1, w->name);
+					*stpcpy(prefix->mem+oldlen, w->name) = '.';
 				} else
 					prefix->mem[(prefix->len=prefix->len||1)-1] = '\n';
 				labelmsg(buf, w->t.p->firsts, w->t.p->nfirsts, prefix);
@@ -246,7 +245,7 @@ labelmsg(struct buffer *buf, struct wordnode *msgs, unsigned int nmsgs,
 		iwnodes = 0;
 nextnode:;
 	}
-	if (!nwnodes || fillbuf(buf, 1))
+	if (!nwnodes)
 		return;
 	fputs("li: expected ", stderr);
 	for (iwnodes=0; iwnodes<nwnodes; iwnodes++) {
@@ -256,7 +255,6 @@ nextnode:;
 		if (*w->name)
 			fputs(w->name, stderr);
 		fputc('(', stderr);
-				for (unsigned int i=0; i<*w->t.s.plen; i++)
 		switch (w->type) {
 		case NUM:
 			fprintf(stderr, "%c%u", w->t.n.format, w->t.n.len);
@@ -275,15 +273,19 @@ nextnode:;
 			fprintf(stderr, "{%u}", *w->pntimes);
 	}
 	fputc('\n', stderr);
+	if (fillbuf(buf, 1))
+		return;
 bytes:
-	fprintf(stderr, "%2hhX", buf->mem[0]);
+	fprintf(stderr, "%02hhX", buf->mem[0]);
 	for (unsigned int i=1; i<buf->len; i++)
-		fprintf(stderr, "\t%2hhX", buf->mem[i]);
+		fprintf(stderr, "\t%02hhX", buf->mem[i]);
+	shiftbuf(buf, buf->len);
 	int c;
 	while ((c = getchar()) != EOF)
-		fprintf(stderr, "\t%2hhX", c);
+		fprintf(stderr, "\t%02hhX", (unsigned char)c);
 	if (ferror(stdin))
 		die("li: getchar: %s", strerror(errno));
+	fputc('\n', stderr);
 }
 
 int
@@ -305,48 +307,49 @@ main(int argc, char **argv)
 	while (c != EOF) {
 		if ((c != '(') && strchr(SPECIAL, c))
 			die("li: expected ( or name at line %u, col %u", line, col);
-		unsigned int *pn;
-		struct wordnode **pwords;
 		char namebuf[MAXNAME+1] = {0};
+		struct parsenode pahead = {.indent=0};
 		if ((c != '(') && ((c=getname(f,namebuf,c,&line,&col)) == ':')) {
 			if (!(phrases=realloc(phrases, sizeof(struct phrase)*++nphrases)))
 				die("li: realloc %u phrases: %s", nphrases, strerror(errno));
-			pwords=&phrases[nphrases-1].firsts, pn=&phrases[nphrases-1].nfirsts;
-			*pwords=NULL, *pn=0;
+			pahead.pwords = &phrases[nphrases-1].firsts;
+			pahead.pn = &phrases[nphrases-1].nfirsts;
+			*pahead.pwords=NULL, *pahead.pn=0;
 			strcpy(phrases[nphrases-1].name, namebuf);
 			*namebuf = '\0';
 			c = getlabelc(f, &line, &col);
 		} else
-			pwords=&msgs, pn=&nmsgs;
-		struct parsenode pahead = {.pwords=pwords, .pn=pn};
+			pahead.pwords=&msgs, pahead.pn=&nmsgs;
 		struct parsenode *panode = &pahead;
-		int indent = 0;
 		while (*namebuf || (c != EOF)) {
+			int indent = -1;
 			if (c == '\n') {
 				if (*namebuf)
 					die("li: name expected type at end of line %u", line-1);
 				while ((c=getlabelc(f,&line,&col)) == '\t');
-				int newindent = (pn == &nmsgs) + col - 1;
-				if (newindent < 1)
+				indent = (panode->pn == &nmsgs) + col - 1;
+				if (indent < 1)
 					break;
-				for (int i=0; i<indent-newindent+1; i++) {
+				while (panode->indent >= indent) {
 					struct parsenode *tmp = panode->prev;
 					free(panode);
 					panode = tmp;
 				}
-				pwords=panode->pwords, pn=panode->pn;
-				if (newindent > indent+1)
+				if (indent > panode->indent+1)
 					die("li: line %u too indented", line-(c=='\n'));
-				indent = newindent;
 			}
-			if (!(*pwords=realloc(*pwords, sizeof(struct wordnode)*++*pn)))
-				die("li: realloc %u words: %s", *pn, strerror(errno));
+			if (!(*panode->pwords=realloc(*panode->pwords, sizeof(struct wordnode) *
+					++*panode->pn)))
+				die("li: realloc %u words: %s", *panode->pn, strerror(errno));
 			struct parsenode *newpanode = malloc(sizeof(struct parsenode));
 			if (!newpanode)
 				die("li: malloc new parse node: %s", strerror(errno));
+			newpanode->indent = (indent == -1) ? panode->indent : indent;
 			newpanode->prev = panode;
-			struct wordnode *w = (panode=newpanode)->w = (*pwords)+*pn-1;
-			panode->pwords=pwords, panode->pn=pn;
+			struct wordnode *w = (*panode->pwords) + *panode->pn - 1;
+			(panode=newpanode)->w = w;
+			w->nexts=NULL, w->nnexts=0;
+			panode->pwords=&w->nexts, panode->pn=&w->nnexts;
 			*w->name = '\0';
 			if (*namebuf)
 				strcpy(w->name, namebuf);
@@ -366,18 +369,18 @@ main(int argc, char **argv)
 					w->t.n.len = 1;
 				if ((w->t.n.isconst=(c == ':'))) {
 					if (w->t.n.format == 'b')
-						die("li: binary constant not supported (line %u, col %u)", line, col);
+						die("li: binary constant not supported (line %u, col %u)",line,col);
 					c = getname(f, namebuf, 0, &line, &col);
 					if (!isdigits(namebuf))
 						die("li: expected digits before line %u, col %u", line, col);
-					if (errno=0, w->t.n.val=strtoul(namebuf+1, NULL, 10), errno)
-						die("li: strtoul (line %u, col %u): %s", line, col, strerror(errno));
+					if (errno=0, w->t.n.val=strtoul(namebuf, NULL, 10), errno)
+						die("li: strtoul (line %u, col %u): %s",line,col,strerror(errno));
 				}
 			} else if ((*namebuf == 's') && isdigits(namebuf+1)) {
 				w->type = STR;
 				if (namebuf[1]) {
 					if (errno=0, w->t.s.lenstorage=strtoul(namebuf+1, NULL, 0), errno)
-						die("li: strtoul (line %u, col %u): %s", line, col, strerror(errno));
+						die("li: strtoul (line %u, col %u): %s",line,col,strerror(errno));
 					w->t.s.plen = &w->t.s.lenstorage;
 				} else if (c == '$')
 					w->t.s.plen = getpnum(f, &c, &line, &col, panode, &pahead);
@@ -402,11 +405,12 @@ main(int argc, char **argv)
 				else if ((c == EOF) || strchr(SPECIAL, c))
 					die("li: expected number at line %u, col %u", line, col);
 				else {
-					c = getname(f, namebuf, 0, &line, &col);
+					c = getname(f, namebuf, c, &line, &col);
 					if (!isdigits(namebuf))
 						die("li: expected digits before line %u, col %u", line, col);
 					if (errno=0, w->ntimesstorage=strtoul(namebuf, NULL, 10), errno)
-						die("li: strtoul before line %u, col %u: %s", line, col, strerror(errno));
+						die("li: strtoul before line %u, col %u: %s", line, col,
+							strerror(errno));
 					w->pntimes = &w->ntimesstorage;
 				}
 				if (c != '}')
@@ -424,10 +428,12 @@ main(int argc, char **argv)
 	}
 	if (fclose(f))
 		die("li: fclose: %s", strerror(errno));
-	struct buffer buf = {0};
-	struct buffer prefix = {.mem=malloc(1), .len=0, .cap=1};
+	struct buffer buf = {malloc(1024), 0, 1024};
+	if (!buf.mem)
+		die("li: malloc buf: %s", strerror(errno));
+	struct buffer prefix = {malloc(MAXNAME+1), 0, MAXNAME+1};
 	if (!prefix.mem)
-		die("li: malloc prefix 1: %s", strerror(errno));
+		die("li: malloc prefix: %s", strerror(errno));
 	while (!fillbuf(&buf, 1))
 		labelmsg(&buf, msgs, nmsgs, &prefix);
 }
