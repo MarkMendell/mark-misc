@@ -346,7 +346,7 @@ main(int argc, char **argv)
 				die("li: malloc new parse node: %s", strerror(errno));
 			newpanode->indent = (indent == -1) ? panode->indent : indent;
 			newpanode->prev = panode;
-			struct wordnode *w = (*panode->pwords) + *panode->pn - 1;
+			struct wordnode *w = *panode->pwords + *panode->pn - 1;
 			(panode=newpanode)->w = w;
 			w->nexts=NULL, w->nnexts=0;
 			panode->pwords=&w->nexts, panode->pn=&w->nnexts;
