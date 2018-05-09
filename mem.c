@@ -170,8 +170,8 @@ main(int argc, char **argv)
 		if (sigd || !r)
 			break;
 		weakest->score += (c == ' ') ? -1 : 1;
-		if (weakest->score < 1)
-			weakest->score = 1;
+		if (weakest->score < 0)
+			weakest->score = 0;
 		weakest->day = today;
 	}
 
