@@ -142,25 +142,33 @@ main(int argc, char **argv)
 
 	// Practice weakest entry until none <= 0.5
 	srand(t);
+	struct entry *practice = NULL;
 	for (;;) {
 
-		// Find weakest entry
-		struct entry *weakest = entries;
+		// Find weakest 2 entries
+		struct entry *w1=NULL, *w2=NULL;
 		double pmin = 1.0;
 		for (unsigned int i=0; i<nentries; i++) {
 			double praw = pow(2.0, -(today-entries[i].day)/pow(2.0,entries[i].score));
 			double p = praw - 0.2*rand()/RAND_MAX;  // shuffle a little
 			if ((praw <= 0.5) && (p < pmin))
-				pmin=p, weakest=entries+i;
+				pmin=p, w2=w1, w1=entries+i;
 		}
-		if (pmin > 0.5)
+		if (!w1)
 			break;
+
+		// Choose the weakest unless we just practiced its reverse
+		practice = (
+				practice &&
+				w2 &&
+				!(strcmp(w1->a, practice->b) || strcmp(w1->b, practice->a))
+			) ? w2 : w1;
 
 		// Practice entry
 		int r = 1;
 		char c;
 		for (int i=0; i<2 && !sigd && r; i++) {
-			if (puts(i ? weakest->b : weakest->a) == EOF)
+			if (puts(i ? practice->b : practice->a) == EOF)
 				die("mem: puts: %s", strerror(errno));
 			do; while (!sigd && ((((r=read(ttyfd, &c, 1)) > 0) && !strchr(" \n", c))
 					|| ((r == -1) && (errno == EINTR))));
@@ -169,10 +177,10 @@ main(int argc, char **argv)
 		}
 		if (sigd || !r)
 			break;
-		weakest->score += (c == ' ') ? -1 : 1;
-		if (weakest->score < 0)
-			weakest->score = 0;
-		weakest->day = today;
+		practice->score += (c == ' ') ? -1 : 1;
+		if (practice->score < 0)
+			practice->score = 0;
+		practice->day = today;
 	}
 
 	// Save
